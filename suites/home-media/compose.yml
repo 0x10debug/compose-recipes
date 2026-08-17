@@ -1,0 +1,149 @@
+# home-media — Docker Compose suite for a self-hosted media server
+# Applications: Jellyfin (video), Navidrome (music), Audiobookshelf (audiobooks), Immich (photos)
+# Optional: Transmission (BT download), Bazarr (subtitles)
+#
+# Usage:
+#   docker compose --profile all up -d
+#   docker compose --profile transmission up -d  # enable BT download
+#
+# All services join the mb-proxy network for reverse proxy integration.
+
+services:
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${JELLYFIN_PORT:-8096}:8096"
+    volumes:
+      - /data/jellyfin/config:/config
+      - /data/jellyfin/cache:/cache
+      - /data/media/movies:/media/movies:ro
+      - /data/media/tv:/media/tv:ro
+    environment:
+      - JELLYFIN_PublishedServerUrl=https://${MEDIA_DOMAIN:-media.example.com}
+
+  navidrome:
+    image: deluan/navidrome:latest
+    container_name: navidrome
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${NAVIDROME_PORT:-4533}:4533"
+    volumes:
+      - /data/navidrome:/data
+      - /data/media/music:/music:ro
+    environment:
+      - ND_SCANSCHEDULE=1h
+      - ND_LOGLEVEL=info
+      - ND_SESSIONTIMEOUT=24h
+      - ND_ENABLETRANSCODINGCONFIG=true
+
+  audiobookshelf:
+    image: advplyr/audiobookshelf:latest
+    container_name: audiobookshelf
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${AUDIOBOOKSHELF_PORT:-13378}:13378"
+    volumes:
+      - /data/audiobookshelf/config:/config
+      - /data/audiobookshelf/metadata:/metadata
+      - /data/media/audiobooks:/audiobooks
+      - /data/media/podcasts:/podcasts
+
+  immich:
+    image: ghcr.io/immich-app/immich-server:latest
+    container_name: immich-server
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${IMMICH_PORT:-2283}:2283"
+    volumes:
+      - /data/immich/upload:/usr/src/app/upload
+      - /data/media/photos:/usr/src/app/external
+    environment:
+      - DB_HOSTNAME=immich-postgres
+      - DB_USERNAME=immich
+      - DB_PASSWORD=${IMMICH_DB_PASSWORD}
+      - DB_DATABASE_NAME=immich
+      - REDIS_HOSTNAME=immich-redis
+      - IMMICH_MACHINE_LEARNING=false
+    depends_on:
+      immich-postgres:
+        condition: service_healthy
+      immich-redis:
+        condition: service_started
+
+  immich-postgres:
+    image: tensorchord/pgvecto-rs:pg14-v0.2.0
+    container_name: immich-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/immich/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=immich
+      - POSTGRES_PASSWORD=${IMMICH_DB_PASSWORD}
+      - POSTGRES_DB=immich
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  immich-redis:
+    image: redis:7-alpine
+    container_name: immich-redis
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+
+  # ── Optional: BT download ──────────────────────────────────────────────
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    restart: unless-stopped
+    profiles: ["transmission"]
+    networks: [mb-proxy]
+    ports:
+      - "${TRANSMISSION_PORT:-9091}:9091"
+      - "51413:51413"
+      - "51413:51413/udp"
+    volumes:
+      - /data/transmission/config:/config
+      - /data/transmission/downloads:/downloads
+      - /data/transmission/watch:/watch
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-UTC}
+
+  # ── Optional: Subtitle management ──────────────────────────────────────
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    profiles: ["subtitles"]
+    networks: [mb-proxy]
+    ports:
+      - "${BAZARR_PORT:-6767}:6767"
+    volumes:
+      - /data/bazarr/config:/config
+      - /data/media/movies:/movies
+      - /data/media/tv:/tv
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-UTC}
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

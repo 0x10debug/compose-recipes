@@ -1,0 +1,343 @@
+#!/usr/bin/env bash
+# mb — recipes command for Docker Compose suite management
+# Deploys pre-configured application suites on VPS.
+#
+# Usage:
+#   mb recipes list                    List all available suites
+#   mb recipes deploy <suite>          Deploy a suite (interactive .env setup)
+#   mb recipes deploy <suite> --env-file .env  Deploy with existing .env
+#   mb recipes status                  Show deployed suites status
+#   mb recipes update [<suite>]        Update suite images (all or specific)
+#   mb recipes stop [<suite>]          Stop suite(s)
+#   mb recipes remove <suite>          Remove suite (keeps data)
+#   mb recipes help                    Show help
+
+set -euo pipefail
+
+# ── Resolve script directory ─────────────────────────────────────────────────
+
+MB_RECIPES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ── Load libraries ───────────────────────────────────────────────────────────
+
+# shellcheck source=lib/common.sh
+source "${MB_RECIPES_SCRIPT_DIR}/lib/common.sh"
+# shellcheck source=lib/network.sh
+source "${MB_RECIPES_SCRIPT_DIR}/lib/network.sh"
+# shellcheck source=lib/env.sh
+source "${MB_RECIPES_SCRIPT_DIR}/lib/env.sh"
+
+# ── Help ─────────────────────────────────────────────────────────────────────
+
+mb_recipes_help() {
+    cat <<'HELP'
+mb recipes — Docker Compose suite management
+
+USAGE:
+    mb recipes list                        List all available suites
+    mb recipes deploy <suite> [OPTIONS]     Deploy a suite
+    mb recipes status                       Show deployed suites status
+    mb recipes update [<suite>]             Update suite images (all or specific)
+    mb recipes stop [<suite>]               Stop suite(s)
+    mb recipes remove <suite>               Remove suite (keeps data)
+    mb recipes help                         Show this help
+
+OPTIONS for deploy:
+    --env-file FILE    Use existing .env file instead of interactive setup
+    --profile LIST     Enable specific compose profiles (comma-separated)
+    --dry-run          Show what would be done without executing
+
+SUITES:
+    home-media              Jellyfin, Navidrome, Audiobookshelf, Immich
+    personal-productivity   Vaultwarden, Memos, Outline, Linkwarden
+    dev-environment         Gitea, Code Server, Woodpecker CI, Registry
+    privacy-suite           AdGuard Home, SearXNG, Vaultwarden, WireGuard
+    self-hosted-cloud       Nextcloud, OnlyOffice, Filebrowser, Radicale
+    minimal-start           Caddy, Uptime Kuma, Beszel (the essentials)
+
+EXAMPLES:
+    mb recipes list                         # See what's available
+    mb recipes deploy home-media             # Deploy home media suite
+    mb recipes deploy home-media --profile transmission  # With BT download
+    mb recipes status                        # Check what's running
+    mb recipes update                        # Update all deployed suites
+    mb recipes remove home-media             # Remove suite (data preserved)
+
+HELP
+}
+
+# ── List ─────────────────────────────────────────────────────────────────────
+
+mb_recipes_list() {
+    mb_step "Available suites"
+    echo ""
+
+    local found=0
+    for dir in "$MB_SUITES_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        local name desc
+        name=$(basename "$dir")
+        [ -f "${dir}compose.yml" ] || continue
+
+        if [ -f "${dir}README.md" ]; then
+            desc=$(head -1 "${dir}README.md" | sed 's/^# *//')
+        else
+            desc="(no description)"
+        fi
+
+        local status=""
+        if mb_suite_deployed "$name"; then
+            status="  ✅ deployed"
+        fi
+
+        printf "  %-25s %s%s\n" "$name" "$desc" "$status"
+        found=$((found + 1))
+    done
+
+    if [ "$found" -eq 0 ]; then
+        mb_warn "No suites found in: $MB_SUITES_DIR"
+    else
+        echo ""
+        mb_info "Deploy with: mb recipes deploy <suite-name>"
+    fi
+}
+
+# ── Deploy ───────────────────────────────────────────────────────────────────
+
+mb_recipes_deploy() {
+    local suite="" env_file="" profile_arg="" dry_run=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --env-file) env_file="$2"; shift 2 ;;
+            --profile)  profile_arg="$2"; shift 2 ;;
+            --dry-run)  dry_run=true; shift ;;
+            *)          suite="$1"; shift ;;
+        esac
+    done
+
+    if [ -z "$suite" ]; then
+        mb_die "Suite name required. Run 'mb recipes list' to see available suites."
+    fi
+
+    if ! mb_suite_exists "$suite"; then
+        mb_die "Suite not found: $suite. Run 'mb recipes list' to see available suites."
+    fi
+
+    mb_check_docker
+
+    local suite_dir="${MB_SUITES_DIR}/${suite}"
+    local deploy_dir="${MB_DEPLOY_DIR}/${suite}"
+
+    mb_step "Deploying suite: $suite"
+
+    # Ensure proxy network exists
+    mb_network_ensure_proxy
+
+    # Prepare deploy directory
+    mkdir -p "$deploy_dir"
+    cp "${suite_dir}/compose.yml" "${deploy_dir}/compose.yml"
+
+    # Handle .env
+    if [ -n "$env_file" ]; then
+        if [ ! -f "$env_file" ]; then
+            mb_die "Env file not found: $env_file"
+        fi
+        cp "$env_file" "${deploy_dir}/.env"
+        mb_detail "Using env file: $env_file"
+    else
+        if [ -f "${deploy_dir}/.env" ]; then
+            mb_detail "Using existing .env: ${deploy_dir}/.env"
+        else
+            mb_info "Generating .env from template..."
+            mb_env_generate "$suite"
+        fi
+    fi
+
+    # Validate .env
+    mb_env_validate "$suite"
+
+    # Build compose command
+    local compose_cmd=(docker compose --project-directory "$deploy_dir")
+    if [ -n "$profile_arg" ]; then
+        IFS=',' read -ra profiles <<< "$profile_arg"
+        for p in "${profiles[@]}"; do
+            compose_cmd+=(--profile "$p")
+        done
+    fi
+
+    # Show what will be deployed
+    mb_info "Services to be deployed:"
+    "${compose_cmd[@]}" -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" config --services 2>/dev/null | sed 's/^/    /'
+
+    if [ "$dry_run" = true ]; then
+        mb_info "[dry-run] Skipping actual deployment"
+        return 0
+    fi
+
+    # Deploy
+    mb_info "Starting containers..."
+    "${compose_cmd[@]}" -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" up -d 2>&1 | sed 's/^/    /'
+
+    # Mark as deployed
+    date '+%Y-%m-%d %H:%M:%S' > "${deploy_dir}/.deployed"
+
+    # Show status
+    echo ""
+    mb_info "Suite status:"
+    "${compose_cmd[@]}" -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" ps 2>/dev/null | sed 's/^/    /'
+
+    mb_success "Suite '$suite' deployed successfully"
+    echo ""
+    mb_info "Next steps:"
+    mb_detail "Configure reverse proxy: https://github.com/0x10debug/network-toolkit"
+    mb_detail "Set up monitoring: https://github.com/0x10debug/monitor-stack"
+    mb_detail "Configure backups: https://github.com/0x10debug/backup-kit"
+}
+
+# ── Status ───────────────────────────────────────────────────────────────────
+
+mb_recipes_status() {
+    mb_check_docker
+
+    mb_step "Deployed suites status"
+    echo ""
+
+    local any_deployed=false
+    for dir in "$MB_DEPLOY_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        local name
+        name=$(basename "$dir")
+        [ -f "${dir}/.deployed" ] || continue
+
+        any_deployed=true
+        local deployed_at
+        deployed_at=$(cat "${dir}/.deployed")
+
+        echo "  $name (deployed: $deployed_at)"
+        if [ -f "${dir}/compose.yml" ] && [ -f "${dir}/.env" ]; then
+            docker compose -f "${dir}/compose.yml" --env-file "${dir}/.env" ps 2>/dev/null | sed 's/^/    /'
+        fi
+        echo ""
+    done
+
+    if [ "$any_deployed" = false ]; then
+        mb_info "No suites deployed. Run 'mb recipes list' to see available suites."
+    fi
+}
+
+# ── Update ───────────────────────────────────────────────────────────────────
+
+mb_recipes_update() {
+    local suite="${1:-}"
+    mb_check_docker
+
+    if [ -n "$suite" ]; then
+        if ! mb_suite_deployed "$suite"; then
+            mb_die "Suite not deployed: $suite"
+        fi
+        _mb_recipes_update_one "$suite"
+    else
+        mb_step "Updating all deployed suites"
+        for dir in "$MB_DEPLOY_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            local name
+            name=$(basename "$dir")
+            [ -f "${dir}/.deployed" ] || continue
+            _mb_recipes_update_one "$name"
+        done
+    fi
+}
+
+_mb_recipes_update_one() {
+    local suite="$1"
+    local deploy_dir="${MB_DEPLOY_DIR}/${suite}"
+
+    mb_info "Updating: $suite"
+    docker compose -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" pull 2>&1 | sed 's/^/    /'
+    docker compose -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" up -d 2>&1 | sed 's/^/    /'
+    mb_success "Updated: $suite"
+}
+
+# ── Stop ─────────────────────────────────────────────────────────────────────
+
+mb_recipes_stop() {
+    local suite="${1:-}"
+    mb_check_docker
+
+    if [ -n "$suite" ]; then
+        if ! mb_suite_deployed "$suite"; then
+            mb_die "Suite not deployed: $suite"
+        fi
+        _mb_recipes_stop_one "$suite"
+    else
+        mb_step "Stopping all deployed suites"
+        for dir in "$MB_DEPLOY_DIR"/*/; do
+            [ -d "$dir" ] || continue
+            local name
+            name=$(basename "$dir")
+            [ -f "${dir}/.deployed" ] || continue
+            _mb_recipes_stop_one "$name"
+        done
+    fi
+}
+
+_mb_recipes_stop_one() {
+    local suite="$1"
+    local deploy_dir="${MB_DEPLOY_DIR}/${suite}"
+
+    mb_info "Stopping: $suite"
+    docker compose -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" stop 2>&1 | sed 's/^/    /'
+    mb_success "Stopped: $suite"
+}
+
+# ── Remove ───────────────────────────────────────────────────────────────────
+
+mb_recipes_remove() {
+    local suite="${1:-}"
+
+    if [ -z "$suite" ]; then
+        mb_die "Suite name required. Usage: mb recipes remove <suite>"
+    fi
+
+    if ! mb_suite_deployed "$suite"; then
+        mb_die "Suite not deployed: $suite"
+    fi
+
+    mb_check_docker
+
+    local deploy_dir="${MB_DEPLOY_DIR}/${suite}"
+
+    mb_step "Removing suite: $suite"
+    mb_warn "This will stop and remove containers, but KEEP your data in /data/."
+
+    if ! mb_ask "Proceed with removal?" "n"; then
+        mb_info "Aborted."
+        return 0
+    fi
+
+    docker compose -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" down --remove-orphans 2>&1 | sed 's/^/    /'
+
+    rm -f "${deploy_dir}/.deployed"
+    mb_success "Suite '$suite' removed (data preserved in /data/)"
+}
+
+# ── Main ─────────────────────────────────────────────────────────────────────
+
+main() {
+    local subcommand="${1:-help}"
+    shift || true
+
+    case "$subcommand" in
+        list)    mb_recipes_list "$@" ;;
+        deploy)  mb_recipes_deploy "$@" ;;
+        status)  mb_recipes_status "$@" ;;
+        update)  mb_recipes_update "$@" ;;
+        stop)    mb_recipes_stop "$@" ;;
+        remove)  mb_recipes_remove "$@" ;;
+        help|-h|--help) mb_recipes_help ;;
+        *) mb_die "Unknown subcommand: $subcommand. Run 'mb recipes help' for usage." ;;
+    esac
+}
+
+main "$@"

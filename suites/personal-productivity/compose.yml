@@ -1,0 +1,155 @@
+# personal-productivity — Docker Compose suite for a self-hosted productivity stack
+# Applications: Vaultwarden (passwords), Memos (notes), Outline (knowledge base), Linkwarden (bookmarks)
+# Optional: Stirling-PDF (PDF tools)
+#
+# Usage:
+#   docker compose --profile all up -d
+#   docker compose --profile pdf up -d  # enable PDF tools
+#
+# All services join the mb-proxy network for reverse proxy integration.
+
+services:
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${VAULTWARDEN_PORT:-8222}:80"
+    volumes:
+      - /data/vaultwarden/data:/data
+    environment:
+      - DOMAIN=https://${PRODUCTIVITY_DOMAIN:-vault.example.com}
+      - ADMIN_TOKEN=${VAULTWARDEN_ADMIN_TOKEN:-}
+      - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-false}
+      - SHOW_PASSWORD_HINT=${VAULTWARDEN_SHOW_PASSWORD_HINT:-false}
+      - TZ=${TIMEZONE:-UTC}
+
+  memos:
+    image: neosmemo/memos:latest
+    container_name: memos
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${MEMOS_PORT:-5230}:5230"
+    volumes:
+      - /data/memos:/var/opt/memos
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+  outline:
+    image: outlinewiki/outline:latest
+    container_name: outline
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${OUTLINE_PORT:-3000}:3000"
+    volumes:
+      - /data/outline/data:/var/lib/outline
+      - /data/outline/uploads:/var/lib/outline/uploads
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - URL=https://${PRODUCTIVITY_DOMAIN:-outline.example.com}
+      - SECRET_KEY=${OUTLINE_SECRET_KEY}
+      - DATABASE_URL=postgres://outline:${OUTLINE_DB_PASSWORD}@outline-postgres:5432/outline
+      - REDIS_URL=redis://outline-redis:6379
+      - FORCE_HTTPS=true
+      - ENABLE_UPDATES=true
+      - FILE_STORAGE=local
+      - FILE_STORAGE_LOCAL_ROOT_DIR=/var/lib/outline/uploads
+    depends_on:
+      outline-postgres:
+        condition: service_healthy
+      outline-redis:
+        condition: service_started
+
+  outline-postgres:
+    image: postgres:16-alpine
+    container_name: outline-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/outline/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=outline
+      - POSTGRES_PASSWORD=${OUTLINE_DB_PASSWORD}
+      - POSTGRES_DB=outline
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U outline -d outline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  outline-redis:
+    image: redis:7-alpine
+    container_name: outline-redis
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/outline/redis:/data
+
+  linkwarden:
+    image: linkwarden/linkwarden:latest
+    container_name: linkwarden
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${LINKWARDEN_PORT:-3001}:3000"
+    volumes:
+      - /data/linkwarden/data:/data/data
+    environment:
+      - DATABASE_URL=postgresql://linkwarden:${LINKWARDEN_DB_PASSWORD}@linkwarden-postgres:5432/linkwarden
+      - NEXTAUTH_SECRET=${LINKWARDEN_NEXTAUTH_SECRET:-}
+      - NEXTAUTH_URL=https://${PRODUCTIVITY_DOMAIN:-links.example.com}
+      - NEXT_PUBLIC_DISABLE_REGISTRATION=${LINKWARDEN_DISABLE_REGISTRATION:-true}
+    depends_on:
+      linkwarden-postgres:
+        condition: service_healthy
+
+  linkwarden-postgres:
+    image: postgres:16-alpine
+    container_name: linkwarden-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/linkwarden/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=linkwarden
+      - POSTGRES_PASSWORD=${LINKWARDEN_DB_PASSWORD}
+      - POSTGRES_DB=linkwarden
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linkwarden -d linkwarden"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Optional: PDF tools ──────────────────────────────────────────────────
+  stirling-pdf:
+    image: frooodle/s-pdf:latest
+    container_name: stirling-pdf
+    restart: unless-stopped
+    profiles: ["pdf"]
+    networks: [mb-proxy]
+    ports:
+      - "${STIRLING_PDF_PORT:-8800}:8080"
+    volumes:
+      - /data/stirling-pdf/config:/configs
+      - /data/stirling-pdf/logs:/logs
+      - /data/stirling-pdf/custom:/customFiles
+    environment:
+      - SYSTEM_DEFAULTLOCALE=${TIMEZONE:-en-US}
+      - UI_APPNAME=Stirling-PDF
+      - SERVER_PORT=8080
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

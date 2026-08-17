@@ -1,0 +1,29 @@
+# app-template — Single application Docker Compose template
+# Copy this directory and customize for your app.
+#
+# Placeholders to replace:
+#   {{APP_NAME}}      — your app name (lowercase, hyphenated)
+#   {{APP_IMAGE}}     — Docker image (e.g., nginx:latest)
+#   {{APP_PORT}}      — host port to expose
+#   {{APP_CONTAINER_PORT}} — port inside the container
+#   {{APP_DESCRIPTION}} — short description for README
+
+services:
+  {{APP_NAME}}:
+    image: {{APP_IMAGE}}
+    container_name: {{APP_NAME}}
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${{{APP_NAME_UPPER}}_PORT:-{{APP_PORT}}}:{{APP_CONTAINER_PORT}}"
+    volumes:
+      - /data/{{APP_NAME}}/config:/config
+      - /data/{{APP_NAME}}/data:/data
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

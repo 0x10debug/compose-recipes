@@ -1,0 +1,160 @@
+# Self-Hosted Cloud Suite
+# Replaces Google Drive / Dropbox / Office365: file sync, document editing, file manager, calendar/contacts.
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+
+volumes:
+  nextcloud-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/nextcloud
+  nextcloud-apps:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/nextcloud-apps
+  nextcloud-config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/nextcloud-config
+  nextcloud-postgres:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/nextcloud-postgres
+  nextcloud-redis:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/nextcloud-redis
+  onlyoffice:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/onlyoffice
+  filebrowser-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/filebrowser
+  radicale:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /data/radicale
+
+services:
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud
+    restart: unless-stopped
+    profiles: ["all", ""]
+    depends_on:
+      nextcloud-postgres:
+        condition: service_healthy
+      nextcloud-redis:
+        condition: service_started
+    networks:
+      - mb-proxy
+    ports:
+      - "${NEXTCLOUD_PORT:-8080}:80"
+    environment:
+      POSTGRES_HOST: nextcloud-postgres
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD}
+      NEXTCLOUD_TRUSTED_DOMAINS: ${CLOUD_DOMAIN}
+      REDIS_HOST: nextcloud-redis
+      OVERWRITEPROTOCOL: https
+      OVERWRITECLIURL: https://${CLOUD_DOMAIN}
+    volumes:
+      - nextcloud-data:/var/www/html/data
+      - nextcloud-apps:/var/www/html/apps
+      - nextcloud-config:/var/www/html/config
+
+  nextcloud-postgres:
+    image: postgres:16-alpine
+    container_name: nextcloud-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks:
+      - mb-proxy
+    environment:
+      POSTGRES_DB: nextcloud
+      POSTGRES_USER: nextcloud
+      POSTGRES_PASSWORD: ${NEXTCLOUD_DB_PASSWORD}
+    volumes:
+      - nextcloud-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nextcloud -d nextcloud"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nextcloud-redis:
+    image: redis:7-alpine
+    container_name: nextcloud-redis
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks:
+      - mb-proxy
+    volumes:
+      - nextcloud-redis:/data
+
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: onlyoffice
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks:
+      - mb-proxy
+    ports:
+      - "${ONLYOFFICE_PORT:-8443}:443"
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
+    volumes:
+      - onlyoffice:/var/www/onlyoffice/Data
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: filebrowser
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks:
+      - mb-proxy
+    ports:
+      - "${FILEBROWSER_PORT:-8081}:80"
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+    volumes:
+      - /data:/srv
+      - filebrowser-data:/database
+      - filebrowser-data:/config
+
+  radicale:
+    image: tomsquest/docker-radicale:latest
+    container_name: radicale
+    restart: unless-stopped
+    profiles: ["pim"]
+    networks:
+      - mb-proxy
+    ports:
+      - "${RADICALE_PORT:-5232}:5232"
+    volumes:
+      - radicale:/data

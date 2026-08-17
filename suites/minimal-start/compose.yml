@@ -1,0 +1,63 @@
+# minimal-start — Docker Compose suite for the essential post-bootstrap stack
+# Applications: Caddy (reverse proxy + automatic SSL), Uptime Kuma (uptime monitoring), Beszel agent (performance monitoring)
+#
+# The "three essentials" — the natural first deployment after hardening a VPS.
+#
+# Usage:
+#   docker compose up -d
+#
+# All services join the mb-proxy network for reverse proxy integration.
+# Caddy is the reverse proxy; other suites' services join mb-proxy so Caddy
+# can route HTTPS traffic to them by container name.
+
+services:
+  caddy:
+    image: caddy:latest
+    container_name: caddy
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /data/caddy/data:/data
+      - /data/caddy/config:/config
+    environment:
+      - PRIMARY_DOMAIN=${PRIMARY_DOMAIN}
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:latest
+    container_name: uptime-kuma
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${UPTIME_KUMA_PORT:-3001}:3001"
+    volumes:
+      - /data/uptime-kuma:/app/data
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+  beszel-agent:
+    image: henrygd/beszel-agent:latest
+    container_name: beszel-agent
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${BESZEL_AGENT_PORT:-45876}:45876"
+    volumes:
+      - /data/beszel:/beszel
+      - /proc:/host/proc:ro
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - KEY=${BESZEL_HUB_KEY}
+      - HUB_URL=${BESZEL_HUB_URL:-}
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

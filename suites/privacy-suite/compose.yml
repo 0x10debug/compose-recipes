@@ -1,0 +1,98 @@
+# privacy-suite — Docker Compose suite for a self-hosted privacy protection stack
+# Applications: AdGuard Home (DNS ad blocking), SearXNG (private search),
+#               Vaultwarden (password manager), WireGuard Easy (VPN)
+#
+# Usage:
+#   docker compose up -d                              # default apps (DNS, search, passwords)
+#   docker compose --profile vpn up -d                # enable VPN
+#   docker compose --profile all --profile vpn up -d  # everything
+#
+# All services join the mb-proxy network for reverse proxy integration.
+
+services:
+  adguardhome:
+    image: adguard/adguardhome:latest
+    container_name: adguardhome
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "${ADGUARD_PORT:-80}:80"
+    volumes:
+      - /data/adguardhome/work:/opt/adguardhome/work
+      - /data/adguardhome/conf:/opt/adguardhome/conf
+    cap_add:
+      - NET_BIND_SERVICE
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: searxng
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${SEARXNG_PORT:-8080}:8080"
+    volumes:
+      - /data/searxng:/etc/searxng
+    environment:
+      - SEARXNG_BASE_URL=https://${PRIVACY_DOMAIN:-privacy.example.com}/search
+      - REDIS_URL=redis://searxng-redis:6379/0
+    depends_on:
+      searxng-redis:
+        condition: service_started
+
+  searxng-redis:
+    image: redis:7-alpine
+    container_name: searxng-redis
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/searxng-redis:/data
+
+  vaultwarden:
+    image: vaultwarden/server:latest
+    container_name: vaultwarden
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${VAULTWARDEN_PORT:-8222}:80"
+    volumes:
+      - /data/vaultwarden:/data
+    environment:
+      - DOMAIN=https://${PRIVACY_DOMAIN:-privacy.example.com}
+      - ADMIN_TOKEN=${ADGUARD_PASSWORD:-changeme}
+      - SIGNUPS_ALLOWED=true
+
+  # ── Optional: VPN ────────────────────────────────────────────────────────
+  wireguard-easy:
+    image: ghcr.io/wg-easy/wg-easy:latest
+    container_name: wireguard-easy
+    restart: unless-stopped
+    profiles: ["vpn"]
+    networks: [mb-proxy]
+    ports:
+      - "51820:51820/udp"
+      - "${WIREGUARD_PORT:-51821}:51821/tcp"
+    volumes:
+      - /lib/modules:/lib/modules
+      - /data/wireguard:/etc/wireguard
+    environment:
+      - WG_HOST=${PRIVACY_DOMAIN:-privacy.example.com}
+      - PASSWORD=${ADGUARD_PASSWORD:-changeme}
+      - WG_DEFAULT_DNS=adguardhome
+      - WG_ALLOWED_IPS=0.0.0.0/0,::/0
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

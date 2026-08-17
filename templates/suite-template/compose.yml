@@ -1,0 +1,72 @@
+# suite-template — Multi-app scenario suite template
+# Copy this directory and customize for your scenario.
+#
+# A suite is a collection of apps that work together to solve a specific
+# use case (e.g., home media, dev environment, privacy).
+
+services:
+  # ── Core apps (always enabled) ─────────────────────────────────────────
+  {{APP_1_NAME}}:
+    image: {{APP_1_IMAGE}}
+    container_name: {{APP_1_NAME}}
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${{APP_1_NAME_UPPER}}_PORT:-{{APP_1_PORT}}}:{{APP_1_CONTAINER_PORT}}"
+    volumes:
+      - /data/{{APP_1_NAME}}/config:/config
+      - /data/{{APP_1_NAME}}/data:/data
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+  {{APP_2_NAME}}:
+    image: {{APP_2_IMAGE}}
+    container_name: {{APP_2_NAME}}
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${{APP_2_NAME_UPPER}}_PORT:-{{APP_2_PORT}}}:{{APP_2_CONTAINER_PORT}}"
+    volumes:
+      - /data/{{APP_2_NAME}}/config:/config
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+  # ── Optional apps (enabled via --profile) ──────────────────────────────
+  {{OPTIONAL_APP_NAME}}:
+    image: {{OPTIONAL_APP_IMAGE}}
+    container_name: {{OPTIONAL_APP_NAME}}
+    restart: unless-stopped
+    profiles: ["{{OPTIONAL_PROFILE}}"]
+    networks: [mb-proxy]
+    ports:
+      - "${{OPTIONAL_APP_NAME_UPPER}}_PORT:-{{OPTIONAL_APP_PORT}}}:{{OPTIONAL_APP_CONTAINER_PORT}}"
+    volumes:
+      - /data/{{OPTIONAL_APP_NAME}}/config:/config
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+  # ── Database sidecar (if needed) ───────────────────────────────────────
+  {{APP_1_NAME}}-postgres:
+    image: postgres:16-alpine
+    container_name: {{APP_1_NAME}}-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/{{APP_1_NAME}}/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER={{APP_1_NAME}}
+      - POSTGRES_PASSWORD=${{APP_1_NAME_UPPER}}_DB_PASSWORD}
+      - POSTGRES_DB={{APP_1_NAME}}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{APP_1_NAME}}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

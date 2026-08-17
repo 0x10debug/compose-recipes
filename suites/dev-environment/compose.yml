@@ -1,0 +1,142 @@
+# dev-environment — Docker Compose suite for a self-hosted development toolchain
+# Applications: Gitea (git hosting), Code Server (browser IDE), Woodpecker CI, Registry
+# Optional: Woodpecker CI (profile "ci"), Docker Registry (profile "registry")
+#
+# Usage:
+#   docker compose up -d                                  # Gitea + Code Server
+#   docker compose --profile ci up -d                     # add Woodpecker CI
+#   docker compose --profile registry up -d               # add private registry
+#   docker compose --profile ci --profile registry up -d  # everything
+#
+# All services join the mb-proxy network for reverse proxy integration.
+
+services:
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${GITEA_WEB_PORT:-3000}:3000"
+      - "${GITEA_SSH_PORT:-2222}:22"
+    volumes:
+      - /data/gitea/data:/data
+      - /data/gitea/config:/etc/gitea
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=postgres
+      - GITEA__database__HOST=gitea-postgres:5432
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=gitea
+      - GITEA__database__PASSWD=${GITEA_DB_PASSWORD}
+      - GITEA__server__DOMAIN=${DEV_DOMAIN}
+      - GITEA__server__SSH_DOMAIN=${DEV_DOMAIN}
+      - GITEA__server__SSH_PORT=2222
+      - GITEA__server__ROOT_URL=https://${DEV_DOMAIN}/
+    depends_on:
+      gitea-postgres:
+        condition: service_healthy
+
+  gitea-postgres:
+    image: postgres:16-alpine
+    container_name: gitea-postgres
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    volumes:
+      - /data/gitea/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=gitea
+      - POSTGRES_PASSWORD=${GITEA_DB_PASSWORD}
+      - POSTGRES_DB=gitea
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitea -d gitea"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${CODE_SERVER_PORT:-8443}:8443"
+    volumes:
+      - /data/code-server/config:/config
+      - /data/gitea/data/repositories:/config/workspace/repos
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=${TIMEZONE:-UTC}
+      - PASSWORD=${CODE_SERVER_PASSWORD}
+
+  # ── Optional: CI/CD ─────────────────────────────────────────────────────
+  woodpecker:
+    image: woodpeckerci/woodpecker-server:latest
+    container_name: woodpecker
+    restart: unless-stopped
+    profiles: ["ci"]
+    networks: [mb-proxy]
+    ports:
+      - "${WOODPECKER_PORT:-8000}:8000"
+    volumes:
+      - /data/woodpecker/data:/var/lib/woodpecker
+    environment:
+      - WOODPECKER_OPEN=false
+      - WOODPECKER_HOST=https://${DEV_DOMAIN}
+      - WOODPECKER_GITEA=true
+      - WOODPECKER_GITEA_URL=https://${DEV_DOMAIN}
+      - WOODPECKER_GITEA_CLIENT=${WOODPECKER_GITEA_CLIENT}
+      - WOODPECKER_GITEA_SECRET=${WOODPECKER_GITEA_SECRET}
+      - WOODPECKER_DATABASE_DRIVER=postgres
+      - WOODPECKER_DATABASE_DATASOURCE=postgres://woodpecker:${WOODPECKER_DB_PASSWORD}@woodpecker-postgres:5432/woodpecker?sslmode=disable
+    depends_on:
+      woodpecker-postgres:
+        condition: service_healthy
+      gitea:
+        condition: service_started
+
+  woodpecker-postgres:
+    image: postgres:16-alpine
+    container_name: woodpecker-postgres
+    restart: unless-stopped
+    profiles: ["ci"]
+    networks: [mb-proxy]
+    volumes:
+      - /data/woodpecker/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=woodpecker
+      - POSTGRES_PASSWORD=${WOODPECKER_DB_PASSWORD}
+      - POSTGRES_DB=woodpecker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U woodpecker -d woodpecker"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Optional: Private container registry ────────────────────────────────
+  registry:
+    image: registry:2
+    container_name: registry
+    restart: unless-stopped
+    profiles: ["registry"]
+    networks: [mb-proxy]
+    ports:
+      - "${REGISTRY_PORT:-5000}:5000"
+    volumes:
+      - /data/registry/data:/var/lib/registry
+      - /data/registry/auth:/auth
+    environment:
+      - REGISTRY_HTTP_ADDR=:5000
+      - REGISTRY_STORAGE_DELETE_ENABLED=true
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
