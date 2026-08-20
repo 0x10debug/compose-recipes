@@ -10,7 +10,7 @@
 
 services:
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: vaultwarden/server:1.32.0
     container_name: vaultwarden
     restart: unless-stopped
     profiles: ["all", ""]
@@ -25,9 +25,15 @@ services:
       - SIGNUPS_ALLOWED=${VAULTWARDEN_SIGNUPS_ALLOWED:-false}
       - SHOW_PASSWORD_HINT=${VAULTWARDEN_SHOW_PASSWORD_HINT:-false}
       - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/alive || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   memos:
-    image: neosmemo/memos:latest
+    image: neosmemo/memos:0.22.4
     container_name: memos
     restart: unless-stopped
     profiles: ["all", ""]
@@ -38,9 +44,15 @@ services:
       - /data/memos:/var/opt/memos
     environment:
       - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5230/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   outline:
-    image: outlinewiki/outline:latest
+    image: outlinewiki/outline:0.80.2
     container_name: outline
     restart: unless-stopped
     profiles: ["all", ""]
@@ -65,7 +77,13 @@ services:
       outline-postgres:
         condition: service_healthy
       outline-redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   outline-postgres:
     image: postgres:16-alpine
@@ -93,9 +111,14 @@ services:
     networks: [mb-proxy]
     volumes:
       - /data/outline/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   linkwarden:
-    image: linkwarden/linkwarden:latest
+    image: linkwarden/linkwarden:2.9.0
     container_name: linkwarden
     restart: unless-stopped
     profiles: ["all", ""]
@@ -112,6 +135,12 @@ services:
     depends_on:
       linkwarden-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   linkwarden-postgres:
     image: postgres:16-alpine
@@ -133,7 +162,7 @@ services:
 
   # ── Optional: PDF tools ──────────────────────────────────────────────────
   stirling-pdf:
-    image: frooodle/s-pdf:latest
+    image: frooodle/s-pdf:0.35.1
     container_name: stirling-pdf
     restart: unless-stopped
     profiles: ["pdf"]
@@ -148,6 +177,12 @@ services:
       - SYSTEM_DEFAULTLOCALE=${TIMEZONE:-en-US}
       - UI_APPNAME=Stirling-PDF
       - SERVER_PORT=8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   mb-proxy:

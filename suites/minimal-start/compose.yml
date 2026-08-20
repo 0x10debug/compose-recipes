@@ -12,7 +12,7 @@
 
 services:
   caddy:
-    image: caddy:latest
+    image: caddy:2.8.4
     container_name: caddy
     restart: unless-stopped
     profiles: ["all", ""]
@@ -26,9 +26,15 @@ services:
       - /data/caddy/config:/config
     environment:
       - PRIMARY_DOMAIN=${PRIMARY_DOMAIN}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   uptime-kuma:
-    image: louislam/uptime-kuma:latest
+    image: louislam/uptime-kuma:1.23.13
     container_name: uptime-kuma
     restart: unless-stopped
     profiles: ["all", ""]
@@ -39,9 +45,15 @@ services:
       - /data/uptime-kuma:/app/data
     environment:
       - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3001/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   beszel-agent:
-    image: henrygd/beszel-agent:latest
+    image: henrygd/beszel-agent:0.18.8
     container_name: beszel-agent
     restart: unless-stopped
     profiles: ["all", ""]
@@ -56,6 +68,12 @@ services:
     environment:
       - KEY=${BESZEL_HUB_KEY}
       - HUB_URL=${BESZEL_HUB_URL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 45876 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   mb-proxy:

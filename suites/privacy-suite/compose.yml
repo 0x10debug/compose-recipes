@@ -11,7 +11,7 @@
 
 services:
   adguardhome:
-    image: adguard/adguardhome:latest
+    image: adguard/adguardhome:0.107.52
     container_name: adguardhome
     restart: unless-stopped
     profiles: ["all", ""]
@@ -25,9 +25,15 @@ services:
       - /data/adguardhome/conf:/opt/adguardhome/conf
     cap_add:
       - NET_BIND_SERVICE
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   searxng:
-    image: searxng/searxng:latest
+    image: searxng/searxng:2026.8.5-1689cb1b5
     container_name: searxng
     restart: unless-stopped
     profiles: ["all", ""]
@@ -41,7 +47,13 @@ services:
       - REDIS_URL=redis://searxng-redis:6379/0
     depends_on:
       searxng-redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   searxng-redis:
     image: redis:7-alpine
@@ -51,9 +63,14 @@ services:
     networks: [mb-proxy]
     volumes:
       - /data/searxng-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   vaultwarden:
-    image: vaultwarden/server:latest
+    image: vaultwarden/server:1.32.0
     container_name: vaultwarden
     restart: unless-stopped
     profiles: ["all", ""]
@@ -66,10 +83,16 @@ services:
       - DOMAIN=https://${PRIVACY_DOMAIN:-privacy.example.com}
       - ADMIN_TOKEN=${ADGUARD_PASSWORD:-changeme}
       - SIGNUPS_ALLOWED=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/alive || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # ── Optional: VPN ────────────────────────────────────────────────────────
   wireguard-easy:
-    image: ghcr.io/wg-easy/wg-easy:latest
+    image: ghcr.io/wg-easy/wg-easy:14.0.0
     container_name: wireguard-easy
     restart: unless-stopped
     profiles: ["vpn"]
@@ -91,6 +114,12 @@ services:
     sysctls:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:51821/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 networks:
   mb-proxy:

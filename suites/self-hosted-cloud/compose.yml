@@ -58,7 +58,7 @@ volumes:
 
 services:
   nextcloud:
-    image: nextcloud:latest
+    image: nextcloud:29.0.6
     container_name: nextcloud
     restart: unless-stopped
     profiles: ["all", ""]
@@ -66,7 +66,7 @@ services:
       nextcloud-postgres:
         condition: service_healthy
       nextcloud-redis:
-        condition: service_started
+        condition: service_healthy
     networks:
       - mb-proxy
     ports:
@@ -85,6 +85,12 @@ services:
       - nextcloud-data:/var/www/html/data
       - nextcloud-apps:/var/www/html/apps
       - nextcloud-config:/var/www/html/config
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/status.php || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   nextcloud-postgres:
     image: postgres:16-alpine
@@ -114,9 +120,14 @@ services:
       - mb-proxy
     volumes:
       - nextcloud-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   onlyoffice:
-    image: onlyoffice/documentserver:latest
+    image: onlyoffice/documentserver:8.2.2
     container_name: onlyoffice
     restart: unless-stopped
     profiles: ["all", ""]
@@ -129,9 +140,15 @@ services:
       JWT_SECRET: ${ONLYOFFICE_JWT_SECRET}
     volumes:
       - onlyoffice:/var/www/onlyoffice/Data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -skf https://localhost/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   filebrowser:
-    image: filebrowser/filebrowser:latest
+    image: filebrowser/filebrowser:2.31.2
     container_name: filebrowser
     restart: unless-stopped
     profiles: ["all", ""]
@@ -146,9 +163,15 @@ services:
       - /data:/srv
       - filebrowser-data:/database
       - filebrowser-data:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   radicale:
-    image: tomsquest/docker-radicale:latest
+    image: tomsquest/docker-radicale:3.3.1.0
     container_name: radicale
     restart: unless-stopped
     profiles: ["pim"]
@@ -158,3 +181,9 @@ services:
       - "${RADICALE_PORT:-5232}:5232"
     volumes:
       - radicale:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5232/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
