@@ -26,6 +26,8 @@ source "${MB_RECIPES_SCRIPT_DIR}/lib/common.sh"
 source "${MB_RECIPES_SCRIPT_DIR}/lib/network.sh"
 # shellcheck source=lib/env.sh
 source "${MB_RECIPES_SCRIPT_DIR}/lib/env.sh"
+# shellcheck source=lib/healthcheck.sh
+source "${MB_RECIPES_SCRIPT_DIR}/lib/healthcheck.sh"
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +42,7 @@ USAGE:
     mb recipes update [<suite>]             Update suite images (all or specific)
     mb recipes stop [<suite>]               Stop suite(s)
     mb recipes remove <suite>               Remove suite (keeps data)
+    mb recipes health [<suite>]             Show health status of containers
     mb recipes help                         Show this help
 
 OPTIONS for deploy:
@@ -60,6 +63,7 @@ EXAMPLES:
     mb recipes deploy home-media             # Deploy home media suite
     mb recipes deploy home-media --profile transmission  # With BT download
     mb recipes status                        # Check what's running
+    mb recipes health home-media             # Show container health
     mb recipes update                        # Update all deployed suites
     mb recipes remove home-media             # Remove suite (data preserved)
 
@@ -186,6 +190,9 @@ mb_recipes_deploy() {
     echo ""
     mb_info "Suite status:"
     "${compose_cmd[@]}" -f "${deploy_dir}/compose.yml" --env-file "${deploy_dir}/.env" ps 2>/dev/null | sed 's/^/    /'
+
+    # Wait for containers to become healthy
+    mb_health_wait_suite "$suite" 180 || mb_warn "Some containers did not reach healthy state — check 'mb recipes health $suite'"
 
     mb_success "Suite '$suite' deployed successfully"
     echo ""
@@ -322,6 +329,23 @@ mb_recipes_remove() {
     mb_success "Suite '$suite' removed (data preserved in /data/)"
 }
 
+# ── Health ────────────────────────────────────────────────────────────────────
+
+mb_recipes_health() {
+    local suite="${1:-}"
+    mb_check_docker
+
+    if [ -n "$suite" ]; then
+        if ! mb_suite_deployed "$suite"; then
+            mb_die "Suite not deployed: $suite"
+        fi
+        mb_health_report "$suite"
+    else
+        mb_step "Container health (all running)"
+        mb_health_report
+    fi
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -335,6 +359,7 @@ main() {
         update)  mb_recipes_update "$@" ;;
         stop)    mb_recipes_stop "$@" ;;
         remove)  mb_recipes_remove "$@" ;;
+        health)  mb_recipes_health "$@" ;;
         help|-h|--help) mb_recipes_help ;;
         *) mb_die "Unknown subcommand: $subcommand. Run 'mb recipes help' for usage." ;;
     esac

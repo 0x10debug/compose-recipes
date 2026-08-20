@@ -12,7 +12,7 @@
 
 services:
   gitea:
-    image: gitea/gitea:latest
+    image: gitea/gitea:1.22.3
     container_name: gitea
     restart: unless-stopped
     profiles: ["all", ""]
@@ -40,6 +40,12 @@ services:
     depends_on:
       gitea-postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   gitea-postgres:
     image: postgres:16-alpine
@@ -60,7 +66,7 @@ services:
       retries: 5
 
   code-server:
-    image: lscr.io/linuxserver/code-server:latest
+    image: lscr.io/linuxserver/code-server:4.127.0
     container_name: code-server
     restart: unless-stopped
     profiles: ["all", ""]
@@ -75,10 +81,16 @@ services:
       - PGID=1000
       - TZ=${TIMEZONE:-UTC}
       - PASSWORD=${CODE_SERVER_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -skf https://localhost:8443/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # ── Optional: CI/CD ─────────────────────────────────────────────────────
   woodpecker:
-    image: woodpeckerci/woodpecker-server:latest
+    image: woodpeckerci/woodpecker-server:2.7.0
     container_name: woodpecker
     restart: unless-stopped
     profiles: ["ci"]
@@ -101,6 +113,12 @@ services:
         condition: service_healthy
       gitea:
         condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8000/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   woodpecker-postgres:
     image: postgres:16-alpine
@@ -135,6 +153,12 @@ services:
     environment:
       - REGISTRY_HTTP_ADDR=:5000
       - REGISTRY_STORAGE_DELETE_ENABLED=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 networks:
   mb-proxy:

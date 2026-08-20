@@ -10,7 +10,7 @@
 
 services:
   jellyfin:
-    image: jellyfin/jellyfin:latest
+    image: jellyfin/jellyfin:10.9.11
     container_name: jellyfin
     restart: unless-stopped
     profiles: ["all", ""]
@@ -24,9 +24,15 @@ services:
       - /data/media/tv:/media/tv:ro
     environment:
       - JELLYFIN_PublishedServerUrl=https://${MEDIA_DOMAIN:-media.example.com}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8096/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   navidrome:
-    image: deluan/navidrome:latest
+    image: deluan/navidrome:0.53.3
     container_name: navidrome
     restart: unless-stopped
     profiles: ["all", ""]
@@ -41,9 +47,15 @@ services:
       - ND_LOGLEVEL=info
       - ND_SESSIONTIMEOUT=24h
       - ND_ENABLETRANSCODINGCONFIG=true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:4533/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   audiobookshelf:
-    image: advplyr/audiobookshelf:latest
+    image: advplyr/audiobookshelf:2.17.0
     container_name: audiobookshelf
     restart: unless-stopped
     profiles: ["all", ""]
@@ -55,9 +67,15 @@ services:
       - /data/audiobookshelf/metadata:/metadata
       - /data/media/audiobooks:/audiobooks
       - /data/media/podcasts:/podcasts
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:13378/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   immich:
-    image: ghcr.io/immich-app/immich-server:latest
+    image: ghcr.io/immich-app/immich-server:v1.121.0
     container_name: immich-server
     restart: unless-stopped
     profiles: ["all", ""]
@@ -78,7 +96,13 @@ services:
       immich-postgres:
         condition: service_healthy
       immich-redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2283/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   immich-postgres:
     image: tensorchord/pgvecto-rs:pg14-v0.2.0
@@ -104,10 +128,15 @@ services:
     restart: unless-stopped
     profiles: ["all", ""]
     networks: [mb-proxy]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # ── Optional: BT download ──────────────────────────────────────────────
   transmission:
-    image: lscr.io/linuxserver/transmission:latest
+    image: lscr.io/linuxserver/transmission:4.1.3
     container_name: transmission
     restart: unless-stopped
     profiles: ["transmission"]
@@ -124,10 +153,16 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9091/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   # ── Optional: Subtitle management ──────────────────────────────────────
   bazarr:
-    image: lscr.io/linuxserver/bazarr:latest
+    image: lscr.io/linuxserver/bazarr:1.5.6
     container_name: bazarr
     restart: unless-stopped
     profiles: ["subtitles"]
@@ -142,6 +177,12 @@ services:
       - PUID=1000
       - PGID=1000
       - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6767/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 networks:
   mb-proxy:

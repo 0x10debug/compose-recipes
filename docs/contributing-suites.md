@@ -72,7 +72,52 @@ docker compose --profile extras up -d         # core + extras
 
 All services use `restart: unless-stopped`.
 
-### 6. Database Sidecars
+### 6. Pinned Image Tags
+
+**Never use `:latest`.** Every `image:` must pin a specific version tag (e.g.
+`caddy:2.8.4`, `postgres:16-alpine`). This is a supply-chain security requirement:
+`:latest` tags are mutable and can pull unexpected/breaking changes or
+compromised images. When upgrading, bump the tag deliberately and test.
+
+### 7. Healthchecks
+
+Every service must define a `healthcheck:` block so `depends_on: condition:
+service_healthy` works and `mb recipes health <suite>` can report status.
+Common patterns:
+
+```yaml
+# Web service (HTTP) — alpine-based images have busybox wget
+healthcheck:
+  test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/ || exit 1"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+
+# Web service (HTTPS, self-signed) — use curl -k
+healthcheck:
+  test: ["CMD-SHELL", "curl -skf https://localhost:8443/ || exit 1"]
+
+# PostgreSQL
+healthcheck:
+  test: ["CMD-SHELL", "pg_isready -U my-app -d my-app"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+
+# Redis
+healthcheck:
+  test: ["CMD", "redis-cli", "ping"]
+  interval: 10s
+  timeout: 5s
+  retries: 5
+```
+
+Use `start_period` generously (30–60s) for apps that need init time. Reusable
+host-side helpers live in `lib/healthcheck.sh` (`mb_health_wait`,
+`mb_health_wait_suite`, `mb_health_tcp`, `mb_health_http`).
+
+### 8. Database Sidecars
 
 When a service needs PostgreSQL:
 
@@ -112,6 +157,8 @@ Every suite must have both `README.md` (English) and `README.zh.md` (Chinese). B
 - [ ] `compose.yml` validates with `docker compose config`
 - [ ] All services join `mb-proxy` network
 - [ ] No port conflicts with existing suites (check port-allocation.md)
+- [ ] All images pinned to specific version tags (no `:latest`)
+- [ ] Every service has a `healthcheck:` block
 - [ ] `.env.example` includes all required variables
 - [ ] `README.md` and `README.zh.md` both present and complete
 - [ ] No hardcoded secrets — all secrets use `${}` env var references
