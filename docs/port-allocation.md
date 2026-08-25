@@ -18,6 +18,8 @@ All suites share a global port allocation table to avoid conflicts when multiple
 | 5230 | Notes | personal-productivity (Memos) |
 | 5232 | Calendar/Contacts | self-hosted-cloud (Radicale) |
 | 6767 | Subtitles | home-media (Bazarr) |
+| 5678 | AI workflow | ai-automation (n8n) |
+| 6333 | Vector DB | ai-automation (Qdrant) |
 | 8000 | CI/CD | dev-environment (Woodpecker) |
 | 8080 | Web app | privacy-suite (SearXNG), self-hosted-cloud (Nextcloud) |
 | 8081 | File manager | self-hosted-cloud (Filebrowser) |
@@ -25,9 +27,11 @@ All suites share a global port allocation table to avoid conflicts when multiple
 | 8222 | Password manager | privacy-suite, personal-productivity (Vaultwarden) |
 | 8443 | Code Server / OnlyOffice | dev-environment (Code Server), self-hosted-cloud (OnlyOffice) |
 | 8800 | PDF tools | personal-productivity (Stirling-PDF) |
+| 8150 | AI flow builder | ai-automation (Flowise) |
 | 9091 | BT download | home-media (Transmission) |
 | 13378 | Audiobooks | home-media (Audiobookshelf) |
 | 2283 | Photos | home-media (Immich) |
+| 11434 | Local LLM | ai-automation (Ollama) |
 | 45876 | Monitoring agent | minimal-start (Beszel) |
 
 ## Conflict Resolution

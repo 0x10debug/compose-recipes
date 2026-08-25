@@ -56,6 +56,7 @@ SUITES:
     dev-environment         Gitea, Code Server, Woodpecker CI, Registry
     privacy-suite           AdGuard Home, SearXNG, Vaultwarden, WireGuard
     self-hosted-cloud       Nextcloud, OnlyOffice, Filebrowser, Radicale
+    ai-automation           n8n, Ollama, Qdrant, Flowise (AI workflow stack)
     minimal-start           Caddy, Uptime Kuma, Beszel (the essentials)
 
 EXAMPLES:

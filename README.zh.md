@@ -34,6 +34,7 @@
 | [dev-environment](suites/dev-environment/) | Gitea, Code Server, Woodpecker CI, Registry | 自托管 Git、浏览器 IDE、CI/CD、Docker 仓库 |
 | [privacy-suite](suites/privacy-suite/) | AdGuard Home, SearXNG, Vaultwarden, WireGuard | DNS 广告拦截、隐私搜索、VPN |
 | [self-hosted-cloud](suites/self-hosted-cloud/) | Nextcloud, OnlyOffice, Filebrowser, Radicale | 替代 Google Drive、Office365、Dropbox |
+| [ai-automation](suites/ai-automation/) | n8n, Ollama, Qdrant, Flowise | 自托管 AI 工作流、本地 LLM、向量搜索 |
 | [minimal-start](suites/minimal-start/) | Caddy, Uptime Kuma, Beszel | 基础三件套：反代、监控 |
 
 ## 快速开始
