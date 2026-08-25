@@ -1,0 +1,118 @@
+# AI Automation Suite
+# Self-hosted AI workflow + LLM + vector store + low-code builder.
+# Applications: n8n (workflow automation), Ollama (local LLM), Qdrant (vector DB), Flowise (low-code AI builder)
+#
+# Usage:
+#   docker compose --profile all up -d
+#   docker compose up -d                    # core: n8n + Ollama + Qdrant
+#   docker compose --profile flowise up -d  # core + Flowise builder
+#
+# All services join the mb-proxy network for reverse proxy integration.
+# Flowise listens on container port 3000; the host port is mapped to 8150 to
+# avoid conflicts with dev-environment (Gitea, host 3000) and self-hosted-cloud
+# (Outline, host 3000). See docs/port-allocation.md.
+
+services:
+  n8n:
+    image: n8nio/n8n:1.62.0
+    container_name: n8n
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - /data/n8n:/home/node/.n8n
+    environment:
+      - N8N_HOST=${AI_AUTOMATION_DOMAIN:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678}
+      - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+      - TZ=${TIMEZONE:-UTC}
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      # Point n8n at the local Ollama + Qdrant for AI nodes
+      - OLLAMA_HOST=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  ollama:
+    image: ollama/ollama:0.5.0
+    container_name: ollama
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - /data/ollama:/root/.ollama
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
+      - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: qdrant
+    restart: unless-stopped
+    profiles: ["all", ""]
+    networks: [mb-proxy]
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - /data/qdrant/storage:/qdrant/storage
+      - /data/qdrant/snapshots:/qdrant/snapshots
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+      - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Optional: low-code AI flow builder ──────────────────────────────────────
+  flowise:
+    image: flowiseai/flowise:2.0.5
+    container_name: flowise
+    restart: unless-stopped
+    profiles: ["all", "flowise"]
+    networks: [mb-proxy]
+    ports:
+      # Flowise listens on container port 3000; host port 8150 avoids conflicts
+      # with dev-environment (Gitea) and self-hosted-cloud (Outline), both on 3000.
+      - "${FLOWISE_PORT:-8150}:3000"
+    volumes:
+      - /data/flowise:/root/.flowise
+    environment:
+      - PORT=3000
+      - FLOWISE_USERNAME=${FLOWISE_USERNAME:-admin}
+      - FLOWISE_PASSWORD=${FLOWISE_PASSWORD}
+      - APIKEY_PATH=/root/.flowise
+      - SECRETKEY_PATH=/root/.flowise
+      - DATABASE_PATH=/root/.flowise
+      - LOG_PATH=/root/.flowise/logs
+      - TZ=${TIMEZONE:-UTC}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
