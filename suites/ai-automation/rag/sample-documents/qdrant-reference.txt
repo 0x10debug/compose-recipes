@@ -1,0 +1,30 @@
+Qdrant Vector Database Quick Reference
+
+Qdrant is an open-source vector search engine written in Rust. It stores
+points, where each point has an integer or UUID identifier, a vector, and an
+arbitrary JSON payload. Collections group points that share the same vector
+configuration: dimensionality, distance metric, and indexing parameters.
+
+The distance metric determines how similarity is computed. Cosine distance is
+the standard for text embeddings because it is insensitive to vector magnitude.
+Dot product is equivalent to cosine when vectors are normalized. Euclidean
+distance is rarely used for normalized embeddings.
+
+Qdrant builds a Hierarchical Navigable Small World (HNSW) graph index for
+approximate nearest neighbour search. The m parameter controls how many edges
+each node keeps; 16 is a sensible default. The ef_construct parameter controls
+search width during index construction; higher values improve recall at the
+cost of slower inserts. At query time, ef controls search width; higher ef
+improves recall at the cost of latency.
+
+Hybrid search combines dense vector retrieval with sparse keyword matching.
+Qdrant supports this through payload filters and, since v1.10, through sparse
+vectors. A common pattern is to run a dense vector search for semantic matches
+and a full-text filter on the payload for exact keyword matches, then merge the
+two result sets. This improves recall for queries that contain rare proper
+nouns or identifiers that embedding models handle poorly.
+
+The Qdrant HTTP API listens on port 6333. The healthz endpoint reports liveness.
+Collections are created with PUT /collections/{name} and points are upserted
+with PUT /collections/{name}/points. Search is performed with POST
+/collections/{name}/points/search, passing the query vector and a limit.

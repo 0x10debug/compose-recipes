@@ -1,0 +1,29 @@
+Retrieval-Augmented Generation (RAG) Concepts
+
+Retrieval-augmented generation, or RAG, combines a retriever with a text
+generator. Instead of relying solely on the parametric knowledge baked into a
+language model during training, RAG first retrieves relevant passages from an
+external knowledge store and then conditions the generator on those passages.
+This reduces hallucination, keeps answers grounded in source material, and
+allows the knowledge base to be updated without retraining the model.
+
+A typical RAG pipeline has four stages. First, documents are split into chunks.
+Second, each chunk is passed through an embedding model that maps the text to a
+fixed-length vector. Third, the vectors are stored in a vector database such as
+Qdrant. Fourth, at query time the user question is embedded with the same model,
+the database returns the nearest chunks by cosine similarity, and those chunks
+are inserted into the language model prompt as context.
+
+Chunk size matters. Chunks that are too large dilute relevance and exceed the
+context window; chunks that are too small lose surrounding meaning. A common
+starting point is 800 to 1200 characters with 100 to 200 characters of overlap
+between consecutive chunks so that sentences split across a boundary are not
+lost. Sentence-aware or markdown-aware splitters usually outperform naive
+character splits for structured documents.
+
+Embedding model choice is a key decision. Local models such as
+nomic-embed-text run inside Ollama and require no API key, which keeps all data
+on the VPS. Hosted models such as OpenAI text-embedding-3-small offer strong
+quality but send text to a third party and require an API key. The two model
+families produce vectors of different dimensionality, so the Qdrant collection
+must be created with the matching vector size before any points are inserted.
