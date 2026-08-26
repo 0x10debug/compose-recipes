@@ -122,3 +122,29 @@ https://github.com/0x10debug/network-toolkit
 - **GPU**：Ollama 默认用 CPU。要启用 GPU 加速，给 `ollama` 服务添加 `deploy.resources.reservations.devices`，并在宿主安装 NVIDIA Container Toolkit。见 [Ollama Docker 文档](https://github.com/ollama/ollama/blob/main/docs/docker.md)。
 - **模型体积**：Ollama 模型存放在 `/data/ollama`，可能很大（多 GB）。确保 VPS 磁盘充足。
 - **n8n 凭据**：`N8N_ENCRYPTION_KEY` 加密已存储的凭据。务必妥善保管；丢失后已有凭据无法恢复。
+
+## RAG（检索增强生成）
+
+套件内置了在 Qdrant + Ollama 之上构建 RAG 知识库所需的全部工具，无需新增容器或端口。包含：
+
+| 路径 | 用途 |
+|------|------|
+| [`init-qdrant.sh`](init-qdrant.sh) | 创建 Qdrant collection，支持 `nomic-embed-text`（768维）和 OpenAI `text-embedding-3-small`（1536维） |
+| [`rag/embed-documents.sh`](rag/embed-documents.sh) | 示例脚本：用 Ollama embedding 将 `.txt` 分块嵌入 Qdrant |
+| [`rag/sample-documents/`](rag/sample-documents/) | 示例 `.txt` 文档，用于测试流水线 |
+| [`n8n-workflows/rag-template.json`](n8n-workflows/rag-template.json) | 可导入的 n8n workflow：文档摄入 + 查询 RAG 闭环 |
+| [`n8n-workflows/README.md`](n8n-workflows/README.md) | workflow 导入和使用说明 |
+| [`docs/rag-setup.md`](docs/rag-setup.md) | RAG 完整配置文档（collection、embedding、分块、Flowise、混合搜索） |
+
+快速开始：
+
+```bash
+docker compose up -d
+docker exec ollama ollama pull nomic-embed-text
+docker exec ollama ollama pull llama3.1
+./init-qdrant.sh --model ollama --collection rag_docs
+./rag/embed-documents.sh --collection rag_docs
+```
+
+然后将 `n8n-workflows/rag-template.json` 导入 n8n 获得可管理的摄入 + 查询闭环，
+或按 [docs/rag-setup.md](docs/rag-setup.md) 在 Flowise 中配置 RAG。

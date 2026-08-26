@@ -34,7 +34,7 @@ A suite is a directory containing a `compose.yml` file with one or more apps pre
 | [dev-environment](suites/dev-environment/) | Gitea, Code Server, Woodpecker CI, Registry | Self-hosted Git, browser IDE, CI/CD, Docker registry |
 | [privacy-suite](suites/privacy-suite/) | AdGuard Home, SearXNG, Vaultwarden, WireGuard | DNS ad blocking, private search, VPN |
 | [self-hosted-cloud](suites/self-hosted-cloud/) | Nextcloud, OnlyOffice, Filebrowser, Radicale | Replace Google Drive, Office365, Dropbox |
-| [ai-automation](suites/ai-automation/) | n8n, Ollama, Qdrant, Flowise | Self-hosted AI workflows, local LLM, vector search |
+| [ai-automation](suites/ai-automation/) | n8n, Ollama, Qdrant, Flowise | Self-hosted AI workflows, local LLM, vector search, RAG |
 | [minimal-start](suites/minimal-start/) | Caddy, Uptime Kuma, Beszel | The essentials: reverse proxy, monitoring |
 
 ## Quick Start

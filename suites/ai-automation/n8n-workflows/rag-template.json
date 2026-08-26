@@ -1,0 +1,190 @@
+{
+  "name": "RAG Template (Ollama + Qdrant)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "rag-ingest",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Ingest Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "rag-ingest-webhook",
+      "notes": "POST a JSON body { \"text\": \"...\", \"source\": \"optional name\" } to ingest a document."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Receive the document text and source label from the webhook.\n// Split into character chunks with overlap, mirroring embed-documents.sh.\nconst text = $json.body?.text ?? '';\nconst source = $json.body?.source ?? 'webhook';\nconst chunkSize = 1000;\nconst overlap = 150;\nconst chunks = [];\nlet pos = 0;\nwhile (pos < text.length) {\n  let end = pos + chunkSize;\n  if (end > text.length) end = text.length;\n  if (end < text.length) {\n    for (let b = end; b > pos + chunkSize / 2; b--) {\n      const ch = text[b];\n      if (ch === ' ' || ch === '\\n' || ch === '\\t') { end = b; break; }\n    }\n  }\n  chunks.push(text.slice(pos, end));\n  pos = end - overlap;\n  if (pos < 0) pos = 0;\n}\nreturn chunks.map((chunk, i) => ({ json: { chunk, source, index: i + 1 } }));"
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000002",
+      "name": "Chunk Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text",
+        "prompt": "={{ $json.chunk }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000003",
+      "name": "Ollama Embed",
+      "type": "n8n-nodes-base.ollama",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "notes": "Uses OLLAMA_HOST=http://ollama:11434 set in compose.yml. Pull the model first: docker exec ollama ollama pull nomic-embed-text"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "http://qdrant:6333/collections/rag_docs/points?wait=true",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "points",
+              "value": "=[{ \"id\": {{ $runIndex + 1 }}, \"vector\": {{ $json.embedding }}, \"payload\": { \"source\": \"{{ $('Chunk Document').item.json.source }}\", \"chunk\": {{ $('Chunk Document').item.json.index }}, \"text\": \"{{ $('Chunk Document').item.json.chunk }}\" } }]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000004",
+      "name": "Qdrant Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "path": "rag-query",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000005",
+      "name": "Query Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 620],
+      "webhookId": "rag-query-webhook",
+      "notes": "POST { \"question\": \"...\" } to retrieve context and generate an answer."
+    },
+    {
+      "parameters": {
+        "model": "nomic-embed-text",
+        "prompt": "={{ $json.body.question }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000006",
+      "name": "Embed Query",
+      "type": "n8n-nodes-base.ollama",
+      "typeVersion": 1,
+      "position": [460, 620]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://qdrant:6333/collections/rag_docs/points/search",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "vector", "value": "={{ $json.embedding }}" },
+            { "name": "limit", "value": 4 }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000007",
+      "name": "Qdrant Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flatten the Qdrant search hits into a single context string.\nconst hits = $json.result ?? [];\nconst context = hits.map((h, i) => `[${i + 1}] (source: ${h.payload?.source ?? 'unknown'})\\n${h.payload?.text ?? ''}`).join('\\n\\n');\nconst question = $('Query Webhook').item.json.body?.question ?? '';\nreturn { json: { context, question } };"
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000008",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 620]
+    },
+    {
+      "parameters": {
+        "model": "llama3.1",
+        "prompt": "={{ 'Answer the question using only the provided context. If the context does not contain the answer, say you do not know.\\n\\nContext:\\n' + $json.context + '\\n\\nQuestion: ' + $json.question + '\\n\\nAnswer:' }}",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-4000-8000-000000000009",
+      "name": "LLM Generate",
+      "type": "n8n-nodes-base.ollama",
+      "typeVersion": 1,
+      "position": [1120, 620],
+      "notes": "Pull the model first: docker exec ollama ollama pull llama3.1"
+    }
+  ],
+  "connections": {
+    "Ingest Webhook": {
+      "main": [
+        [
+          { "node": "Chunk Document", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Chunk Document": {
+      "main": [
+        [
+          { "node": "Ollama Embed", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Ollama Embed": {
+      "main": [
+        [
+          { "node": "Qdrant Upsert", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Query Webhook": {
+      "main": [
+        [
+          { "node": "Embed Query", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Embed Query": {
+      "main": [
+        [
+          { "node": "Qdrant Search", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Qdrant Search": {
+      "main": [
+        [
+          { "node": "Build Prompt", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          { "node": "LLM Generate", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "tags": [
+    { "name": "rag" },
+    { "name": "ai-automation" }
+  ]
+}

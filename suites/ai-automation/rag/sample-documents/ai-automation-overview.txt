@@ -1,0 +1,18 @@
+Self-Hosted AI Automation Stack
+
+This document describes the ai-automation suite shipped in compose-recipes.
+The suite bundles four services that together form a self-hosted AI platform:
+n8n for workflow orchestration, Ollama for local large language model inference,
+Qdrant as the vector database, and Flowise as an optional low-code AI flow
+builder.
+
+All services join the external mb-proxy Docker network so a reverse proxy can
+terminate TLS and route traffic to each container port. Persistent data lives
+under /data on the host: /data/n8n, /data/ollama, /data/qdrant/storage, and
+/data/flowise. Every image uses a pinned tag and every service has a
+healthcheck, following the mb suite conventions.
+
+To start the core stack run: docker compose up -d. This brings up n8n, Ollama,
+and Qdrant. To also run Flowise, add the flowise profile: docker compose
+--profile flowise up -d. After startup, pull a first LLM into Ollama with
+docker exec ollama ollama pull llama3.1.

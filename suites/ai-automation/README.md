@@ -122,3 +122,31 @@ In short: **compose-recipes/ai-automation = shared services that run 24/7 on the
 - **GPU**: Ollama runs on CPU by default. To enable GPU acceleration, add `deploy.resources.reservations.devices` to the `ollama` service and install NVIDIA Container Toolkit on the host. See the [Ollama Docker docs](https://github.com/ollama/ollama/blob/main/docs/docker.md).
 - **Model size**: Ollama models live in `/data/ollama` and can be large (multi-GB). Ensure the VPS has enough disk.
 - **n8n credentials**: `N8N_ENCRYPTION_KEY` encrypts stored credentials. Keep it safe; losing it makes existing credentials unrecoverable.
+
+## RAG (Retrieval-Augmented Generation)
+
+The suite ships everything needed to build a RAG knowledge base on top of
+Qdrant + Ollama, with no new containers or ports. Bundled helpers:
+
+| Path | Purpose |
+|------|---------|
+| [`init-qdrant.sh`](init-qdrant.sh) | Create a Qdrant collection for `nomic-embed-text` (768-dim) or OpenAI `text-embedding-3-small` (1536-dim) |
+| [`rag/embed-documents.sh`](rag/embed-documents.sh) | Example: chunk + embed `.txt` files into Qdrant via Ollama |
+| [`rag/sample-documents/`](rag/sample-documents/) | Sample `.txt` documents to test the pipeline |
+| [`n8n-workflows/rag-template.json`](n8n-workflows/rag-template.json) | Importable n8n workflow: ingest + query RAG loop |
+| [`n8n-workflows/README.md`](n8n-workflows/README.md) | Workflow import and usage instructions |
+| [`docs/rag-setup.md`](docs/rag-setup.md) | Full RAG configuration guide (collections, embeddings, chunking, Flowise, hybrid search) |
+
+Quick start:
+
+```bash
+docker compose up -d
+docker exec ollama ollama pull nomic-embed-text
+docker exec ollama ollama pull llama3.1
+./init-qdrant.sh --model ollama --collection rag_docs
+./rag/embed-documents.sh --collection rag_docs
+```
+
+Then import `n8n-workflows/rag-template.json` into n8n for a managed ingest +
+query loop, or follow [docs/rag-setup.md](docs/rag-setup.md) to configure RAG
+in Flowise.

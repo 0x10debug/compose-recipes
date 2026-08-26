@@ -55,6 +55,9 @@ services:
       - TZ=${TIMEZONE:-UTC}
       - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-5m}
       - OLLAMA_MAX_LOADED_MODELS=${OLLAMA_MAX_LOADED_MODELS:-1}
+      # Embedding model used by RAG (see docs/rag-setup.md). Preload on first
+      # start by running: docker exec ollama ollama pull nomic-embed-text
+      - OLLAMA_EMBED_MODEL=${OLLAMA_EMBED_MODEL:-nomic-embed-text}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
       interval: 30s
