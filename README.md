@@ -36,6 +36,7 @@ A suite is a directory containing a `compose.yml` file with one or more apps pre
 | [self-hosted-cloud](suites/self-hosted-cloud/) | Nextcloud, OnlyOffice, Filebrowser, Radicale | Replace Google Drive, Office365, Dropbox |
 | [ai-automation](suites/ai-automation/) | n8n, Ollama, Qdrant, Flowise | Self-hosted AI workflows, local LLM, vector search, RAG |
 | [minimal-start](suites/minimal-start/) | Caddy, Uptime Kuma, Beszel | The essentials: reverse proxy, monitoring |
+| [socket-proxy](suites/socket-proxy/) | docker-socket-proxy | Hardened Docker API gateway with endpoint allowlist |
 
 ## Quick Start
 

@@ -1,0 +1,69 @@
+# integrate-with-monitoring.yml — compose snippet for monitor-stack integration
+#
+# Shows how to connect a monitoring agent (e.g. from monitor-stack) to the
+# socket-proxy for read-only Docker visibility. The agent can list containers,
+# inspect their state, and read daemon info — but cannot create, kill, or exec.
+#
+# Prerequisites:
+#   1. Deploy this socket-proxy suite first (creates mb-socket-proxy network)
+#   2. Set CONTAINERS=1 and INFO=1 in socket-proxy/.env
+#   3. Keep POST=0 — monitoring should be read-only
+#
+# Merge this snippet into your monitor-stack compose.yml, or use it as a
+# standalone sidecar alongside the monitor-stack services.
+
+services:
+  # Example: a container stats exporter that reads Docker API
+  # Replace with your actual monitoring agent (e.g. Beszel, custom exporter)
+  docker-stats-exporter:
+    image: curlimages/curl:8.11.1
+    container_name: docker-stats-exporter
+    restart: unless-stopped
+    networks:
+      - mb-proxy
+      - mb-socket-proxy
+    environment:
+      # Point the exporter at the filtered Docker API
+      - DOCKER_HOST=tcp://socket-proxy:2375
+    # Example: poll container list every 60s and log to stdout
+    # A real exporter would push metrics to Prometheus/Grafana instead
+    command: >
+      sh -c "while true; do
+        echo \"[$(date)] Container count:\"
+        curl -sf http://socket-proxy:2375/containers/json 2>/dev/null | grep -o '\"Id\"' | wc -l
+        sleep 60
+      done"
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+
+  # The socket-proxy itself — only needed if you're running standalone.
+  # If you already deployed the socket-proxy suite, remove this service
+  # and just reference the mb-socket-proxy network as external.
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.1.5
+    container_name: socket-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      CONTAINERS: 1
+      INFO: 1
+      POST: 0
+      EXEC: 0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:2375/version', timeout=3); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mb-socket-proxy
+
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}
+  mb-socket-proxy:
+    internal: true
+    name: ${MB_SOCKET_PROXY_NETWORK:-mb-socket-proxy}

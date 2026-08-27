@@ -1,0 +1,80 @@
+# socket-proxy — Docker Compose suite for a hardened Docker API gateway
+# Application: tecnativa/docker-socket-proxy:0.1.5 (pinned)
+#
+# Lets other containers talk to the Docker API WITHOUT handing them the raw
+# /var/run/docker.sock (which is equivalent to root on the host). The proxy
+# re-exposes a filtered subset of the Docker API on :2375 inside an internal
+# network. No ports are published to the host — only containers on the same
+# internal network can reach it. Every endpoint defaults to denied (0); flip
+# the ones you need to 1 in .env.
+#
+# Usage:
+#   docker compose up -d                              # socket-proxy only
+#   docker compose --profile demo up -d               # socket-proxy + demo client
+#
+# This suite creates the mb-socket-proxy internal network. Other suites that
+# need Docker visibility attach to it as an external network (see README).
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.1.5
+    container_name: socket-proxy
+    restart: unless-stopped
+    profiles: ["all", "", "demo"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # ── Read-only endpoints (GET/HEAD only when =1) ──────────────────────
+      CONTAINERS: ${CONTAINERS:-1}
+      EXEC: ${EXEC:-0}
+      IMAGES: ${IMAGES:-0}
+      INFO: ${INFO:-0}
+      NETWORKS: ${NETWORKS:-0}
+      NODES: ${NODES:-0}
+      PLUGINS: ${PLUGINS:-0}
+      SERVICES: ${SERVICES:-0}
+      SESSION: ${SESSION:-0}
+      SWARM: ${SWARM:-0}
+      SYSTEM: ${SYSTEM:-0}
+      TASKS: ${TASKS:-0}
+      VOLUMES: ${VOLUMES:-0}
+      # ── Write endpoints (POST/PUT/DELETE when =1) ────────────────────────
+      POST: ${POST:-0}
+      BUILD: ${BUILD:-0}
+      COMMIT: ${COMMIT:-0}
+      CONFIGS: ${CONFIGS:-0}
+      DISTRIBUTION: ${DISTRIBUTION:-0}
+      EVENTS: ${EVENTS:-0}
+      SECRETS: ${SECRETS:-0}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://127.0.0.1:2375/version', timeout=3); sys.exit(0)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - mb-socket-proxy
+
+  # ── Demo client: verifies the proxy is filtering correctly ────────────────
+  # Enable with --profile demo. Runs once, prints results, exits.
+  docker-api-demo:
+    image: curlimages/curl:8.11.1
+    container_name: docker-api-demo
+    profiles: ["demo"]
+    networks:
+      - mb-socket-proxy
+    depends_on:
+      socket-proxy:
+        condition: service_healthy
+    command: >
+      sh -c "echo '=== GET /containers/json (expect 200 when CONTAINERS=1) ==='
+      && curl -sf -o /dev/null -w 'HTTP %{http_code}\n' http://socket-proxy:2375/containers/json
+      && echo '=== POST /containers/create (expect 403 when POST=0) ==='
+      && curl -s -o /dev/null -w 'HTTP %{http_code}\n' -X POST http://socket-proxy:2375/containers/create
+      && echo '=== GET /info (expect 403 when INFO=0) ==='
+      && curl -s -o /dev/null -w 'HTTP %{http_code}\n' http://socket-proxy:2375/info"
+
+networks:
+  mb-socket-proxy:
+    internal: true
+    name: ${MB_SOCKET_PROXY_NETWORK:-mb-socket-proxy}

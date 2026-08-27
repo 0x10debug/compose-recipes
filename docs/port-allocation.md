@@ -33,6 +33,7 @@ All suites share a global port allocation table to avoid conflicts when multiple
 | 2283 | Photos | home-media (Immich) |
 | 11434 | Local LLM | ai-automation (Ollama) |
 | 45876 | Monitoring agent | minimal-start (Beszel) |
+| — (internal) | Docker API gateway | socket-proxy (internal network only, no host port) |
 
 ## Conflict Resolution
 

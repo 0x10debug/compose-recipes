@@ -58,6 +58,7 @@ SUITES:
     self-hosted-cloud       Nextcloud, OnlyOffice, Filebrowser, Radicale
     ai-automation           n8n, Ollama, Qdrant, Flowise (AI workflow stack)
     minimal-start           Caddy, Uptime Kuma, Beszel (the essentials)
+    socket-proxy            Docker API gateway with endpoint allowlist (security)
 
 EXAMPLES:
     mb recipes list                         # See what's available

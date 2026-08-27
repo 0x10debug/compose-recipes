@@ -36,6 +36,7 @@
 | [self-hosted-cloud](suites/self-hosted-cloud/) | Nextcloud, OnlyOffice, Filebrowser, Radicale | 替代 Google Drive、Office365、Dropbox |
 | [ai-automation](suites/ai-automation/) | n8n, Ollama, Qdrant, Flowise | 自托管 AI 工作流、本地 LLM、向量搜索、RAG |
 | [minimal-start](suites/minimal-start/) | Caddy, Uptime Kuma, Beszel | 基础三件套：反代、监控 |
+| [socket-proxy](suites/socket-proxy/) | docker-socket-proxy | 加固的 Docker API 网关，端点白名单过滤 |
 
 ## 快速开始
 
