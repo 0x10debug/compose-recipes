@@ -72,6 +72,9 @@ mb recipes update [<suite>]            # Update suite images (all or specific)
 mb recipes stop [<suite>]              # Stop suite(s)
 mb recipes remove <suite>              # Remove suite (keeps data)
 mb recipes help                        # Show help
+mb recipes backup-hooks discover --config compose.yml  # Find DB services
+mb recipes backup-hooks pre --service postgres         # Dump before backup
+mb recipes backup-hooks post --service postgres        # Clean up after backup
 ```
 
 ## FAQ
@@ -96,10 +99,24 @@ All suites in this repo follow a [global port allocation table](docs/port-alloca
 
 The suites in this repo cover the most common homelab scenarios: home media, personal productivity, development, privacy, and cloud storage. Start with [minimal-start](suites/minimal-start/) for the essentials, then add suites as needed. Each suite is independent — deploy only what you need.
 
+### How to back up databases in a compose suite?
+
+Use the built-in backup hooks to dump databases (PostgreSQL, MySQL/MariaDB, Redis, MongoDB, SQLite) before a Restic backup and clean up afterwards:
+
+```bash
+mb recipes backup-hooks discover --config compose.yml   # find DB services
+mb recipes backup-hooks pre    --service postgres        # dump before backup
+# ... run restic backup /data /var/tmp/compose-backup-hooks ...
+mb recipes backup-hooks post   --service postgres        # clean up
+```
+
+Tag services with Docker labels (`backup.hook=pre-post`, `backup.hook.type=postgres`) to opt them in. See [Backup Hooks](docs/backup-hooks.md) for the full guide, and [backup-kit](https://github.com/0x10debug/backup-kit) for the Restic wrapper that calls these hooks automatically.
+
 ## Documentation
 
 - [Port Allocation](docs/port-allocation.md) — Global port planning across all suites
 - [Reverse Proxy Setup](docs/reverse-proxy-setup.md) — How to expose your apps with HTTPS
+- [Backup Hooks](docs/backup-hooks.md) — Database-aware backup hooks (pre/post dump)
 - [Contributing Suites](docs/contributing-suites.md) — How to create and submit new suites
 
 ## Related

@@ -72,6 +72,9 @@ mb recipes update [<suite>]            # 更新套件镜像（全部或指定）
 mb recipes stop [<suite>]              # 停止套件
 mb recipes remove <suite>              # 移除套件（保留数据）
 mb recipes help                        # 显示帮助
+mb recipes backup-hooks discover --config compose.yml  # 发现数据库服务
+mb recipes backup-hooks pre --service postgres         # 备份前 dump
+mb recipes backup-hooks post --service postgres        # 备份后清理
 ```
 
 ## 常见问题
@@ -96,10 +99,24 @@ mb recipes help                        # 显示帮助
 
 此 repo 中的套件覆盖最常见的 homelab 场景：家庭媒体、个人生产力、开发、隐私和云存储。从 [minimal-start](suites/minimal-start/) 开始部署基础三件套，然后按需添加。每个套件独立——只部署你需要的。
 
+### 如何备份套件中的数据库？
+
+用内置的备份钩子在 Restic 备份前 dump 数据库（PostgreSQL、MySQL/MariaDB、Redis、MongoDB、SQLite），备份后自动清理：
+
+```bash
+mb recipes backup-hooks discover --config compose.yml   # 发现数据库服务
+mb recipes backup-hooks pre    --service postgres        # 备份前 dump
+# ... 运行 restic backup /data /var/tmp/compose-backup-hooks ...
+mb recipes backup-hooks post   --service postgres        # 备份后清理
+```
+
+用 Docker label（`backup.hook=pre-post`、`backup.hook.type=postgres`）标记需要备份的服务。完整指南见[备份钩子](docs/backup-hooks.md)，[backup-kit](https://github.com/0x10debug/backup-kit) 会自动调用这些钩子执行 Restic 备份。
+
 ## 文档
 
 - [端口分配](docs/port-allocation.md) — 所有套件的全局端口规划
 - [反向代理设置](docs/reverse-proxy-setup.md) — 如何用 HTTPS 暴露你的应用
+- [备份钩子](docs/backup-hooks.md) — 数据库感知备份钩子（备份前 dump、备份后清理）
 - [贡献套件](docs/contributing-suites.md) — 如何创建和提交新套件
 
 ## 相关项目

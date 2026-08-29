@@ -1,0 +1,111 @@
+# examples/backup-integration.yml
+# Example compose snippet showing how to tag database services with backup
+# hook labels so mb / backup-kit can dump them before a Restic run and clean
+# up afterwards. See docs/backup-hooks.md for the full convention.
+#
+# Drop these service blocks into your own compose.yml (or use them as a
+# reference for labelling existing services), then run:
+#
+#   ./scripts/backup-hook-exec.sh discover --config compose.yml
+#   ./scripts/backup-hook-exec.sh pre    --all --config compose.yml
+#   restic backup /data /var/tmp/compose-backup-hooks
+#   ./scripts/backup-hook-exec.sh post   --all --config compose.yml
+
+services:
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  # pg_dump → /var/tmp/compose-backup-hooks/postgres-<ts>/postgres.sql
+  postgres:
+    image: postgres:16-alpine
+    container_name: app-postgres
+    restart: unless-stopped
+    volumes:
+      - /data/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=appdb
+      - POSTGRES_USER=appuser
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "postgres"
+      backup.hook.db: "appdb"
+      backup.hook.user: "appuser"
+
+  # ── MySQL ───────────────────────────────────────────────────────────────────
+  # mysqldump → /var/tmp/compose-backup-hooks/mysql-<ts>/mysql.sql
+  mysql:
+    image: mysql:8
+    container_name: app-mysql
+    restart: unless-stopped
+    volumes:
+      - /data/mysql:/var/lib/mysql
+    environment:
+      - MYSQL_DATABASE=appdb
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "mysql"
+      backup.hook.db: "appdb"
+      backup.hook.user: "root"
+
+  # ── MariaDB (same dump strategy as MySQL) ───────────────────────────────────
+  mariadb:
+    image: mariadb:11
+    container_name: app-mariadb
+    restart: unless-stopped
+    volumes:
+      - /data/mariadb:/var/lib/mysql
+    environment:
+      - MARIADB_DATABASE=appdb
+      - MARIADB_ROOT_PASSWORD=${MARIADB_ROOT_PASSWORD}
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "mariadb"
+      backup.hook.db: "appdb"
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  # BGSAVE + docker cp dump.rdb → /var/tmp/compose-backup-hooks/redis-<ts>/redis.rdb
+  redis:
+    image: redis:7-alpine
+    container_name: app-redis
+    restart: unless-stopped
+    volumes:
+      - /data/redis:/data
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "redis"
+      # Override the RDB path if your redis.conf uses a non-default dir.
+      # backup.hook.path: "/data/dump.rdb"
+
+  # ── MongoDB ─────────────────────────────────────────────────────────────────
+  # mongodump --archive → /var/tmp/compose-backup-hooks/mongo-<ts>/mongo-mongo.archive
+  mongo:
+    image: mongo:7
+    container_name: app-mongo
+    restart: unless-stopped
+    volumes:
+      - /data/mongo:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=appdb
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "mongo"
+      backup.hook.db: "appdb"
+
+  # ── SQLite (file copy) ──────────────────────────────────────────────────────
+  # docker cp of the .db file → /var/tmp/compose-backup-hooks/sqlite-<ts>/sqlite.db
+  sqlite:
+    image: alpine:3.20
+    container_name: app-sqlite
+    restart: unless-stopped
+    volumes:
+      - /data/sqlite:/data
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "sqlite"
+      backup.hook.path: "/data/app.db"
+
+# All services join the shared proxy network (standard mb suite convention).
+networks:
+  mb-proxy:
+    external: true
+    name: ${MB_PROXY_NETWORK:-mb-proxy}

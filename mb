@@ -28,6 +28,8 @@ source "${MB_RECIPES_SCRIPT_DIR}/lib/network.sh"
 source "${MB_RECIPES_SCRIPT_DIR}/lib/env.sh"
 # shellcheck source=lib/healthcheck.sh
 source "${MB_RECIPES_SCRIPT_DIR}/lib/healthcheck.sh"
+# shellcheck source=lib/backup-hooks.sh
+source "${MB_RECIPES_SCRIPT_DIR}/lib/backup-hooks.sh"
 
 # ── Help ─────────────────────────────────────────────────────────────────────
 
@@ -43,12 +45,21 @@ USAGE:
     mb recipes stop [<suite>]               Stop suite(s)
     mb recipes remove <suite>               Remove suite (keeps data)
     mb recipes health [<suite>]             Show health status of containers
+    mb recipes backup-hooks <action> [opts] Database-aware backup hooks
     mb recipes help                         Show this help
 
 OPTIONS for deploy:
     --env-file FILE    Use existing .env file instead of interactive setup
     --profile LIST     Enable specific compose profiles (comma-separated)
     --dry-run          Show what would be done without executing
+
+OPTIONS for backup-hooks:
+    --service NAME     Compose service to hook (required unless --all)
+    --all              Run the hook for every discovered database service
+    --config FILE      Path to compose.yml (default: ./compose.yml)
+    --output DIR       Dump output directory
+    --dry-run          Preview commands without executing them
+    --verify           Verify dump integrity before post-backup cleanup
 
 SUITES:
     home-media              Jellyfin, Navidrome, Audiobookshelf, Immich
@@ -68,6 +79,9 @@ EXAMPLES:
     mb recipes health home-media             # Show container health
     mb recipes update                        # Update all deployed suites
     mb recipes remove home-media             # Remove suite (data preserved)
+    mb recipes backup-hooks discover --config compose.yml  # Find DB services
+    mb recipes backup-hooks pre --service postgres         # Dump before backup
+    mb recipes backup-hooks post --service postgres        # Clean up after
 
 HELP
 }
@@ -348,6 +362,67 @@ mb_recipes_health() {
     fi
 }
 
+# ── Backup hooks ──────────────────────────────────────────────────────────────
+
+# mb_recipes_backup_hooks <action> [options]
+#   Thin wrapper over lib/backup-hooks.sh. Accepts the same options as
+#   scripts/backup-hook-exec.sh: --service, --all, --config, --output,
+#   --dry-run, --verify.
+mb_recipes_backup_hooks() {
+    local action="${1:-}"
+    [ -z "$action" ] && mb_die "backup-hooks action required: pre|post|discover (run 'mb recipes help')"
+    shift
+
+    local service="" all=false config="${MB_BACKUP_COMPOSE_FILE:-compose.yml}"
+    local output_dir="" dry_run=false verify=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --service) service="$2"; shift 2 ;;
+            --all)     all=true; shift ;;
+            --config)  config="$2"; shift 2 ;;
+            --output)  output_dir="$2"; shift 2 ;;
+            --dry-run) dry_run=true; shift ;;
+            --verify)  verify=true; shift ;;
+            -h|--help) mb_recipes_help; return 0 ;;
+            *) mb_die "Unknown backup-hooks option: $1" ;;
+        esac
+    done
+
+    [ -n "$output_dir" ] && export MB_BACKUP_OUTPUT_DIR="$output_dir"
+    [ "$dry_run" = true ] && export MB_BACKUP_DRY_RUN=1
+    [ "$verify" = true ] && export MB_BACKUP_VERIFY=1
+    export MB_BACKUP_COMPOSE_FILE="$config"
+
+    case "$action" in
+        pre)
+            if [ "$all" = true ]; then
+                mb_backup_hook_pre_all "$config"
+            else
+                [ -z "$service" ] && mb_die "--service NAME is required (or use --all)"
+                mb_backup_hook_pre "$service" "$config"
+            fi
+            ;;
+        post)
+            if [ "$all" = true ]; then
+                mb_backup_hook_post_all "$config"
+            else
+                [ -z "$service" ] && mb_die "--service NAME is required (or use --all)"
+                mb_backup_hook_post "$service" "$config"
+            fi
+            ;;
+        discover)
+            mb_backup_hook_discover "$config"
+            ;;
+        help|-h|--help)
+            mb_recipes_help
+            ;;
+        *)
+            mb_die "Unknown backup-hooks action: $action (use pre|post|discover)"
+            ;;
+    esac
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -362,6 +437,7 @@ main() {
         stop)    mb_recipes_stop "$@" ;;
         remove)  mb_recipes_remove "$@" ;;
         health)  mb_recipes_health "$@" ;;
+        backup-hooks) mb_recipes_backup_hooks "$@" ;;
         help|-h|--help) mb_recipes_help ;;
         *) mb_die "Unknown subcommand: $subcommand. Run 'mb recipes help' for usage." ;;
     esac

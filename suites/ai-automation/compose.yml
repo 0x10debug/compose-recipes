@@ -79,6 +79,14 @@ services:
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
       - TZ=${TIMEZONE:-UTC}
+    # Backup hooks: Qdrant is file-backed, so the pre-backup hook copies its
+    # storage directory as a consistent point-in-time snapshot (sqlite engine =
+    # docker cp of the path). The labels also tell backup-kit this service
+    # should be included in Restic runs. See docs/backup-hooks.md.
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "sqlite"
+      backup.hook.path: "/qdrant/storage"
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/healthz || exit 1"]
       interval: 30s
