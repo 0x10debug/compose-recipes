@@ -1,0 +1,114 @@
+# swarm/stack-base.yml — Docker Swarm stack base template
+#
+# Copy this file as a starting point for your own Swarm stack. It shows the
+# deploy-level knobs that Swarm adds on top of regular Compose:
+#   - replicas + update/rollback config
+#   - placement constraints (node labels)
+#   - restart_policy
+#   - resources (CPU / memory limits)
+#   - overlay network
+#
+# Not every service needs all of these. Stateful services (databases) should
+# pin to a single node and run replicas: 1. Stateless web apps can scale.
+#
+# Usage:
+#   docker stack deploy -c stack-base.yml mystack
+#   ./swarm/deploy-stack.sh --stack-name mystack --config-file stack-base.yml
+
+services:
+
+  # ── Example stateless service (scalable) ───────────────────────────────────
+  webapp:
+    image: myapp:latest
+    # Swarm-specific deploy section (ignored by plain docker compose)
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1           # update one task at a time
+        delay: 10s                # wait between updates
+        failure_action: rollback  # auto-rollback on failure
+        order: start-first        # start new tasks before stopping old
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - "node.role==worker"   # only run on worker nodes
+          # - "node.labels.env==prod"  # use node labels for environment isolation
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    ports:
+      - "8080:80"
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Example stateful service (pinned to one node) ──────────────────────────
+  database:
+    image: postgres:16-alpine
+    deploy:
+      replicas: 1                # databases do not scale horizontally
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: pause    # do not auto-rollback a DB — investigate first
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        window: 60s
+      placement:
+        constraints:
+          - "node.role==manager"  # pin DB to the manager node (or a labeled DB node)
+          # - "node.labels.db==true"
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-changeme}"
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d appdb || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+networks:
+  # Overlay network — spans all Swarm nodes. The reverse proxy (Caddy/Traefik)
+  # should also join this network so it can route to services by name across
+  # nodes. Use the same name as your single-node mb-proxy network for a
+  # smooth migration path.
+  mb-proxy-overlay:
+    driver: overlay
+    # external: true           # uncomment if the network already exists
+
+volumes:
+  pg-data:
+    # In Swarm, volumes are local to the node where the task runs. For
+    # production, use a named volume with a driver that provides shared
+    # storage, or pin the DB to a specific node so the volume stays put.
+    driver: local

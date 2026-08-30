@@ -75,6 +75,10 @@ mb recipes help                        # 显示帮助
 mb recipes backup-hooks discover --config compose.yml  # 发现数据库服务
 mb recipes backup-hooks pre --service postgres         # 备份前 dump
 mb recipes backup-hooks post --service postgres        # 备份后清理
+mb recipes registry --format json                      # 生成模板注册表
+mb recipes port-check                                  # 扫描端口冲突
+mb recipes port-check 8080                             # 检查单个端口
+mb recipes swarm-deploy --stack-name myapp --config-file swarm/stack-example.yml  # Swarm 部署
 ```
 
 ## 常见问题
@@ -118,6 +122,43 @@ mb recipes backup-hooks post   --service postgres        # 备份后清理
 - [反向代理设置](docs/reverse-proxy-setup.md) — 如何用 HTTPS 暴露你的应用
 - [备份钩子](docs/backup-hooks.md) — 数据库感知备份钩子（备份前 dump、备份后清理）
 - [贡献套件](docs/contributing-suites.md) — 如何创建和提交新套件
+- [Docker Swarm](swarm/README.md) — Swarm stack 模板和从单机迁移
+
+## 基础设施管理
+
+### 模板注册表
+
+生成机器可读的套件注册表，用于自动化部署和文档生成：
+
+```bash
+mb recipes registry --format json     # JSON 注册表（套件、服务、端口、环境变量）
+mb recipes registry --format yaml     # YAML 注册表
+mb recipes registry --format table    # 人类可读表格（默认）
+mb recipes registry --output registry.json  # 输出到文件
+mb recipes registry --suite home-media     # 仅指定套件
+```
+
+### 端口冲突检查
+
+部署前扫描所有套件的默认端口，检测冲突：
+
+```bash
+mb recipes port-check              # 扫描所有套件的端口冲突
+mb recipes port-check 8080         # 检查单个端口
+mb recipes port-check --verbose    # 显示所有端口，不只显示冲突
+```
+
+### Docker Swarm 部署
+
+将套件作为 Swarm stack 部署到多节点集群：
+
+```bash
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml --dry-run
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml --env-file .env
+```
+
+详见 [swarm/README.md](swarm/README.md)，包含 Swarm 初始化、节点标签、网络配置和从单机 Compose 迁移的步骤。
 
 ## 相关项目
 

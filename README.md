@@ -75,6 +75,10 @@ mb recipes help                        # Show help
 mb recipes backup-hooks discover --config compose.yml  # Find DB services
 mb recipes backup-hooks pre --service postgres         # Dump before backup
 mb recipes backup-hooks post --service postgres        # Clean up after backup
+mb recipes registry --format json                      # Generate template registry
+mb recipes port-check                                  # Scan for port conflicts
+mb recipes port-check 8080                             # Check a single port
+mb recipes swarm-deploy --stack-name myapp --config-file swarm/stack-example.yml  # Swarm deploy
 ```
 
 ## FAQ
@@ -118,6 +122,43 @@ Tag services with Docker labels (`backup.hook=pre-post`, `backup.hook.type=postg
 - [Reverse Proxy Setup](docs/reverse-proxy-setup.md) — How to expose your apps with HTTPS
 - [Backup Hooks](docs/backup-hooks.md) — Database-aware backup hooks (pre/post dump)
 - [Contributing Suites](docs/contributing-suites.md) — How to create and submit new suites
+- [Docker Swarm](swarm/README.md) — Swarm stack templates and migration from single-node
+
+## Infrastructure Management
+
+### Template Registry
+
+Generate a machine-readable registry of all suites for automated deployment and documentation:
+
+```bash
+mb recipes registry --format json     # JSON registry (suites, services, ports, env vars)
+mb recipes registry --format yaml     # YAML registry
+mb recipes registry --format table    # Human-readable table (default)
+mb recipes registry --output registry.json  # Write to file
+mb recipes registry --suite home-media     # Single suite only
+```
+
+### Port Conflict Check
+
+Scan all suites' default ports and detect conflicts before deploying:
+
+```bash
+mb recipes port-check              # Scan all suites for port conflicts
+mb recipes port-check 8080         # Check a single port
+mb recipes port-check --verbose    # Show all ports, not just conflicts
+```
+
+### Docker Swarm Deployment
+
+Deploy suites as Swarm stacks across a multi-node cluster:
+
+```bash
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml --dry-run
+mb recipes swarm-deploy --stack-name mystack --config-file swarm/stack-example.yml --env-file .env
+```
+
+See [swarm/README.md](swarm/README.md) for Swarm setup, node labels, network configuration, and migration from single-node Compose.
 
 ## Related
 

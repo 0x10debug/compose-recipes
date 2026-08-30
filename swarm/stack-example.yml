@@ -1,0 +1,188 @@
+# swarm/stack-example.yml — Complete Docker Swarm stack example
+#
+# A production-style Swarm stack: reverse proxy + web app + database + monitoring.
+# Demonstrates how the compose-recipes suite pattern maps onto Swarm.
+#
+# Before deploying:
+#   1. Initialize Swarm:  docker swarm init
+#   2. Create the overlay network:
+#        docker network create -d overlay mb-proxy-overlay
+#   3. Set required env vars (or create a .env file):
+#        PRIMARY_DOMAIN=app.example.com
+#        POSTGRES_PASSWORD=strong-password
+#        GRAFANA_PASSWORD=strong-password
+#
+# Usage:
+#   docker stack deploy -c swarm/stack-example.yml mystack
+#   ./swarm/deploy-stack.sh --stack-name mystack --config-file swarm/stack-example.yml
+
+services:
+
+  # ── Reverse proxy (Caddy) — automatic SSL, routes to all services ──────────
+  caddy:
+    image: caddy:2.8.4
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+      placement:
+        constraints:
+          - "node.role==manager"
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      - PRIMARY_DOMAIN=${PRIMARY_DOMAIN:-localhost}
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Web application (scalable) ─────────────────────────────────────────────
+  webapp:
+    image: nginxdemos/hello:latest
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+      rollback_config:
+        parallelism: 1
+        delay: 5s
+        order: stop-first
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+        window: 120s
+      placement:
+        constraints:
+          - "node.role==worker"
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+        reservations:
+          cpus: "0.1"
+          memory: 32M
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Database (pinned to manager, single replica) ───────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: pause
+      restart_policy:
+        condition: any
+        max_attempts: 5
+        window: 60s
+      placement:
+        constraints:
+          - "node.role==manager"
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: appdb
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-changeme}"
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d appdb || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── Monitoring (Uptime Kuma — single replica) ──────────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:1.23.13
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        max_attempts: 3
+      placement:
+        constraints:
+          - "node.role==manager"
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    volumes:
+      - kuma-data:/app/data
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+    networks:
+      - mb-proxy-overlay
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3001/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  mb-proxy-overlay:
+    driver: overlay
+    # external: true   # uncomment if you created the network manually
+
+volumes:
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+  pg-data:
+    driver: local
+  kuma-data:
+    driver: local

@@ -11,6 +11,10 @@
 #   mb recipes stop [<suite>]          Stop suite(s)
 #   mb recipes remove <suite>          Remove suite (keeps data)
 #   mb recipes help                    Show help
+#   mb recipes registry [opts]         Generate template registry (JSON/YAML/table)
+#   mb recipes port-check [PORT]       Check port usage across suites / host
+#   mb recipes swarm-deploy [opts]     Deploy a Docker Swarm stack
+#   mb recipes help                    Show help
 
 set -euo pipefail
 
@@ -46,6 +50,9 @@ USAGE:
     mb recipes remove <suite>               Remove suite (keeps data)
     mb recipes health [<suite>]             Show health status of containers
     mb recipes backup-hooks <action> [opts] Database-aware backup hooks
+    mb recipes registry [opts]              Generate template registry (JSON/YAML/table)
+    mb recipes port-check [PORT]            Check port usage across suites / host
+    mb recipes swarm-deploy [opts]          Deploy a Docker Swarm stack
     mb recipes help                         Show this help
 
 OPTIONS for deploy:
@@ -60,6 +67,23 @@ OPTIONS for backup-hooks:
     --output DIR       Dump output directory
     --dry-run          Preview commands without executing them
     --verify           Verify dump integrity before post-backup cleanup
+
+OPTIONS for registry:
+    --format FORMAT    Output format: json | yaml | table (default: table)
+    --output FILE      Write to file instead of stdout
+    --suite NAME       Only emit the named suite
+    --dry-run          Show what would be scanned without emitting
+
+OPTIONS for port-check:
+    [PORT]             Check a single port (e.g. 8080); omit to scan all suites
+    --verbose          Show all ports, not just conflicts
+
+OPTIONS for swarm-deploy:
+    --stack-name NAME  Swarm stack name (required)
+    --config-file FILE Path to the stack YAML file (required)
+    --env-file FILE    Env file to load before deploying
+    --dry-run          Show what would be deployed without executing
+    --prune            Remove services no longer referenced in the file
 
 SUITES:
     home-media              Jellyfin, Navidrome, Audiobookshelf, Immich
@@ -82,6 +106,10 @@ EXAMPLES:
     mb recipes backup-hooks discover --config compose.yml  # Find DB services
     mb recipes backup-hooks pre --service postgres         # Dump before backup
     mb recipes backup-hooks post --service postgres        # Clean up after
+    mb recipes registry --format json                      # Generate JSON registry
+    mb recipes port-check                                  # Scan for port conflicts
+    mb recipes port-check 8080                             # Check a single port
+    mb recipes swarm-deploy --stack-name myapp --config-file swarm/stack-example.yml  # Swarm deploy
 
 HELP
 }
@@ -423,6 +451,222 @@ mb_recipes_backup_hooks() {
     esac
 }
 
+# ── Registry ──────────────────────────────────────────────────────────────────
+
+# mb_recipes_registry [options]
+#   Thin wrapper over scripts/build-registry.sh.
+mb_recipes_registry() {
+    local script="${MB_RECIPES_DIR}/scripts/build-registry.sh"
+    if [ ! -x "$script" ]; then
+        mb_die "Registry builder not found or not executable: $script"
+    fi
+    "$script" "$@"
+}
+
+# ── Port check ────────────────────────────────────────────────────────────────
+
+# mb_recipes_port_check [PORT] [--verbose]
+#   Scans all suites' default ports and reports conflicts against the host.
+#   If PORT is given, checks only that port.
+mb_recipes_port_check() {
+    local target_port="" verbose=false
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --verbose) verbose=true; shift ;;
+            -h|--help)
+                cat <<'PCHELP'
+mb recipes port-check — check port usage across suites
+
+USAGE:
+    mb recipes port-check [PORT] [--verbose]
+
+OPTIONS:
+    [PORT]     Check a single port (e.g. 8080); omit to scan all suites
+    --verbose  Show all ports, not just conflicts
+PCHELP
+                return 0
+                ;;
+            [0-9]*) target_port="$1"; shift ;;
+            *) mb_die "Unknown port-check option: $1" ;;
+        esac
+    done
+
+    mb_step "Port conflict check"
+    echo ""
+
+    # Build a quick registry of port -> suite|service|env_var
+    local script="${MB_RECIPES_DIR}/scripts/build-registry.sh"
+    if [ -x "$script" ]; then
+        "$script" --format table > /dev/null 2>&1 || true
+    fi
+
+    # Collect all ports from all suites' compose files
+    local ports_tmp
+    ports_tmp="$(mktemp -t mb-ports-XXXXXX)"
+
+    _mb_port_check_cleanup() { rm -f "$ports_tmp"; }
+
+    for dir in "$MB_SUITES_DIR"/*/; do
+        [ -d "$dir" ] || continue
+        local suite_name
+        suite_name=$(basename "$dir")
+        [ -f "${dir}compose.yml" ] || continue
+
+        # Extract port mappings using the same awk parser approach
+        awk -v suite="$suite_name" '
+        /^[[:space:]]*$/ { next }
+        /^[[:space:]]*#/ { next }
+        /^[^[:space:]]/ { key=$0; sub(/:.*/,"",key); in_svc=(key=="services")?1:0; next }
+        !in_svc { next }
+        /^  [^[:space:]-]/ {
+            line=$0
+            if (line ~ /:[[:space:]]*$/ || line ~ /:[[:space:]]*#/) {
+                sub(/^  /,"",line); sub(/:.*/,"",line); gsub(/[[:space:]]/,"",line)
+                cur_svc=line; cur_sec=""
+            }
+            next
+        }
+        /^    [^[:space:]-]/ {
+            line=$0
+            if (line ~ /:[[:space:]]*$/) {
+                sub(/^    /,"",line); sub(/:.*/,"",line); gsub(/[[:space:]]/,"",line)
+                cur_sec=line
+            } else if (line ~ /:[[:space:]]*\[/) { cur_sec="" }
+            next
+        }
+        /^      - / && cur_sec=="ports" {
+            item=$0; sub(/^      - /,"",item); gsub(/^"|"$/,"",item)
+            proto="tcp"
+            if (item ~ /\/udp$/) { proto="udp"; sub(/\/udp$/,"",item) }
+            else if (item ~ /\/tcp$/) { proto="tcp"; sub(/\/tcp$/,"",item) }
+
+            host=""; envvar=""
+            if (item ~ /^\$\{/) {
+                ci=index(item,"}")
+                if (ci>0) {
+                    expr=substr(item,1,ci)
+                    rest=substr(item,ci+1); sub(/^:/,"",rest)
+                    tmp=expr; sub(/^\$\{/,"",tmp); sub(/[:}].*/,"",tmp); envvar=tmp
+                    tmp=expr; sub(/.*:-/,"",tmp); sub(/[}].*/,"",tmp); host=tmp
+                }
+            } else {
+                split(item,p,":")
+                if (p[1]!="") host=p[1]
+            }
+            if (host ~ /^[0-9]+$/) {
+                print host "/" proto "\t" suite "\t" cur_svc "\t" envvar
+            }
+            next
+        }
+        ' "${dir}compose.yml" >> "$ports_tmp"
+    done
+
+    if [ -n "$target_port" ]; then
+        # Single port check — match port number regardless of protocol
+        mb_info "Checking port $target_port:"
+        local found=0
+        while IFS=$'\t' read -r portproto suite svc envvar; do
+            local pnum="${portproto%%/*}"
+            if [ "$pnum" = "$target_port" ]; then
+                printf "  %-12s %-25s %s" "$portproto" "$suite" "$svc"
+                [ -n "$envvar" ] && printf " (env: %s)" "$envvar"
+                echo ""
+                found=$((found + 1))
+            fi
+        done < "$ports_tmp"
+
+        if [ "$found" -gt 1 ]; then
+            mb_warn "Port $target_port is used by $found services — potential conflict"
+        elif [ "$found" -eq 0 ]; then
+            mb_success "Port $target_port is not used by any suite"
+        else
+            mb_success "Port $target_port is used by 1 service (no conflict)"
+        fi
+
+        # Check if it's in use on the host
+        if command -v ss >/dev/null 2>&1; then
+            if ss -tlnp 2>/dev/null | grep -q ":${target_port}\b"; then
+                mb_warn "Port $target_port is currently IN USE on this host"
+            else
+                mb_detail "Port $target_port is free on this host (ss)"
+            fi
+        fi
+        _mb_port_check_cleanup
+        return 0
+    fi
+
+    # Full scan — find duplicate ports across suites
+    mb_info "Scanning all suites for port conflicts..."
+    echo ""
+
+    # Deduplicate by port/proto/suite/service (removes same-service tcp/udp dupes)
+    # then sort and find duplicates across different suites
+    local deduped_tmp
+    deduped_tmp="$(mktemp -t mb-dedup-XXXXXX)"
+    sort -u "$ports_tmp" > "$deduped_tmp"
+
+    # Sort by port/proto and find duplicates across different suites
+    local prev_key="" prev_suite="" prev_svc=""
+    sort -t$'\t' -k1,1 "$deduped_tmp" | while IFS=$'\t' read -r portproto suite svc envvar; do
+        if [ "$portproto" = "$prev_key" ] && [ -n "$prev_key" ] && [ "$suite/$svc" != "$prev_suite/$prev_svc" ]; then
+            printf "  ${MB_YELLOW}⚠${MB_RESET} %-12s %s/%s vs %s/%s\n" "$portproto" "$prev_suite" "$prev_svc" "$suite" "$svc"
+        fi
+        if [ "$portproto" = "$prev_key" ]; then
+            :
+        else
+            if [ "$verbose" = true ]; then
+                printf "  %-12s %-25s %s" "$portproto" "$suite" "$svc"
+                [ -n "$envvar" ] && printf " (%s)" "$envvar"
+                echo ""
+            fi
+        fi
+        prev_key="$portproto"
+        prev_suite="$suite"
+        prev_svc="$svc"
+    done
+
+    rm -f "$deduped_tmp"
+
+    # Count total ports
+    local total
+    total=$(wc -l < "$ports_tmp" | tr -d ' ')
+    echo ""
+    mb_info "Total ports across all suites: $total"
+
+    # Check host usage for all ports
+    if command -v ss >/dev/null 2>&1; then
+        local host_inuse=0
+        while IFS=$'\t' read -r port suite svc envvar; do
+            if ss -tlnp 2>/dev/null | grep -q ":${port}\b"; then
+                if [ "$verbose" = true ] || [ "$host_inuse" -eq 0 ]; then
+                    :
+                fi
+                host_inuse=$((host_inuse + 1))
+            fi
+        done < "$ports_tmp"
+        if [ "$host_inuse" -gt 0 ]; then
+            mb_warn "$host_inuse port(s) from suites are currently IN USE on this host"
+        else
+            mb_success "No suite ports are currently in use on this host"
+        fi
+    fi
+
+    _mb_port_check_cleanup
+}
+
+# ── Swarm deploy ──────────────────────────────────────────────────────────────
+
+# mb_recipes_swarm_deploy [options]
+#   Thin wrapper over swarm/deploy-stack.sh.
+mb_recipes_swarm_deploy() {
+    local script="${MB_RECIPES_DIR}/swarm/deploy-stack.sh"
+    if [ ! -x "$script" ]; then
+        mb_die "Swarm deploy script not found or not executable: $script"
+    fi
+    "$script" "$@"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -438,6 +682,9 @@ main() {
         remove)  mb_recipes_remove "$@" ;;
         health)  mb_recipes_health "$@" ;;
         backup-hooks) mb_recipes_backup_hooks "$@" ;;
+        registry)    mb_recipes_registry "$@" ;;
+        port-check)  mb_recipes_port_check "$@" ;;
+        swarm-deploy) mb_recipes_swarm_deploy "$@" ;;
         help|-h|--help) mb_recipes_help ;;
         *) mb_die "Unknown subcommand: $subcommand. Run 'mb recipes help' for usage." ;;
     esac
