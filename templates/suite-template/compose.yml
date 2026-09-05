@@ -13,7 +13,7 @@ services:
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
-      - "${{APP_1_NAME_UPPER}}_PORT:-{{APP_1_PORT}}}:{{APP_1_CONTAINER_PORT}}"
+      - "${{{APP_1_NAME_UPPER}}_PORT:-{{APP_1_PORT}}}:{{APP_1_CONTAINER_PORT}}"
     volumes:
       - /data/{{APP_1_NAME}}/config:/config
       - /data/{{APP_1_NAME}}/data:/data
@@ -27,7 +27,7 @@ services:
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
-      - "${{APP_2_NAME_UPPER}}_PORT:-{{APP_2_PORT}}}:{{APP_2_CONTAINER_PORT}}"
+      - "${{{APP_2_NAME_UPPER}}_PORT:-{{APP_2_PORT}}}:{{APP_2_CONTAINER_PORT}}"
     volumes:
       - /data/{{APP_2_NAME}}/config:/config
     environment:
@@ -41,7 +41,7 @@ services:
     profiles: ["{{OPTIONAL_PROFILE}}"]
     networks: [mb-proxy]
     ports:
-      - "${{OPTIONAL_APP_NAME_UPPER}}_PORT:-{{OPTIONAL_APP_PORT}}}:{{OPTIONAL_APP_CONTAINER_PORT}}"
+      - "${{{OPTIONAL_APP_NAME_UPPER}}_PORT:-{{OPTIONAL_APP_PORT}}}:{{OPTIONAL_APP_CONTAINER_PORT}}"
     volumes:
       - /data/{{OPTIONAL_APP_NAME}}/config:/config
     environment:
@@ -58,7 +58,7 @@ services:
       - /data/{{APP_1_NAME}}/postgres:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER={{APP_1_NAME}}
-      - POSTGRES_PASSWORD=${{APP_1_NAME_UPPER}}_DB_PASSWORD}
+      - POSTGRES_PASSWORD=${{{APP_1_NAME_UPPER}}_DB_PASSWORD}
       - POSTGRES_DB={{APP_1_NAME}}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U {{APP_1_NAME}}"]

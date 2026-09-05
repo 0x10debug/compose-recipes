@@ -36,7 +36,6 @@ EMBED_MODEL="${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
 DOCS_DIR=""
 CHUNK_SIZE=1000        # characters per chunk
 CHUNK_OVERLAP=150      # character overlap between consecutive chunks
-LLM_MODEL="${OLLAMA_LLM_MODEL:-llama3.1}"
 
 DEFAULT_DOCS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sample-documents"
 

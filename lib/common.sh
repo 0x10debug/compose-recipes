@@ -6,6 +6,8 @@ set -euo pipefail
 
 # ── Version ──────────────────────────────────────────────────────────────────
 
+# Version is consumed by scripts/build-registry.sh after sourcing this file.
+# shellcheck disable=SC2034
 MB_RECIPES_VERSION="1.0.0"
 
 # ── Paths ────────────────────────────────────────────────────────────────────

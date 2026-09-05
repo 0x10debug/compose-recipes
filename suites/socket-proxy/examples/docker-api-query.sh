@@ -43,7 +43,7 @@ check_endpoint() {
         *)   verdict="HTTP ${status}" ;;
     esac
 
-    printf "  %-8s %-30s → HTTP %s  %s\n" "${method}" "${path}" "${status}" "${verdict}"
+    printf "  %-20s %-8s %-30s → HTTP %s  %s\n" "${label}" "${method}" "${path}" "${status}" "${verdict}"
 }
 
 # ── Read-only endpoints ───────────────────────────────────────────────────────

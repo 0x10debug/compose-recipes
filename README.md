@@ -1,5 +1,7 @@
 # Self-Hosted App Suites — Docker Compose Recipes for VPS
 
+[![CI](https://github.com/0x10debug/compose-recipes/actions/workflows/ci.yml/badge.svg)](https://github.com/0x10debug/compose-recipes/actions/workflows/ci.yml)
+
 Production-ready Docker Compose recipes organized by real-world scenarios. Instead of choosing from 1000+ apps, pick a suite that matches your needs—home media, personal productivity, dev environment, privacy, or self-hosted cloud—and deploy with one command. Each suite comes with pre-configured networking, port allocation, and reverse proxy integration. Built for VPS and homelab servers running Docker.
 
 > **New to self-hosting?** Start with the [minimal-start](suites/minimal-start/) suite — it deploys a reverse proxy, uptime monitor, and performance monitor in one command. Then add more suites as you need them.
