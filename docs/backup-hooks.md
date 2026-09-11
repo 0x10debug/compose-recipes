@@ -180,3 +180,9 @@ post-backup looks up the last dump path from
 The hooks try `container_name:` from compose first, then fall back to
 `<project>-<service>-1`. If you use a custom project name or replica suffix,
 set `container_name:` explicitly in your compose file.
+
+## Environment variables
+
+| Variable | Meaning |
+|---|---|
+| `MB_BACKUP_COMPOSE_PROFILES` | Space-separated compose profiles (e.g. `"ci registry"`) included during service discovery so optional-profile databases are dumped too |

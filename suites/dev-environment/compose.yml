@@ -15,7 +15,6 @@ services:
     image: gitea/gitea:1.22.3
     container_name: gitea
     restart: unless-stopped
-    profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
       - "${GITEA_WEB_PORT:-3000}:3000"
@@ -51,10 +50,13 @@ services:
     image: postgres:16-alpine
     container_name: gitea-postgres
     restart: unless-stopped
-    profiles: ["all", ""]
     networks: [mb-proxy]
     volumes:
       - /data/gitea/postgres:/var/lib/postgresql/data
+    labels:
+      # Dump Gitea's database before backup runs (lib/backup-hooks.sh).
+      backup.hook: "pre-post"
+      backup.hook.type: "postgres"
     environment:
       - POSTGRES_USER=gitea
       - POSTGRES_PASSWORD=${GITEA_DB_PASSWORD}
@@ -69,7 +71,6 @@ services:
     image: lscr.io/linuxserver/code-server:4.127.0
     container_name: code-server
     restart: unless-stopped
-    profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
       - "${CODE_SERVER_PORT:-8443}:8443"
@@ -128,6 +129,9 @@ services:
     networks: [mb-proxy]
     volumes:
       - /data/woodpecker/postgres:/var/lib/postgresql/data
+    labels:
+      backup.hook: "pre-post"
+      backup.hook.type: "postgres"
     environment:
       - POSTGRES_USER=woodpecker
       - POSTGRES_PASSWORD=${WOODPECKER_DB_PASSWORD}
@@ -137,6 +141,39 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # ── Optional: Gitea Actions runner ──────────────────────────────────────
+  # Built-in CI for Gitea (alternative to Woodpecker). Registration happens
+  # once, with a token from Gitea's admin UI (Site administration ->
+  # Actions -> Runners -> Create runner token); see README.md runbook.
+  gitea-runner:
+    image: gitea/act_runner:0.2.11
+    container_name: gitea-runner
+    restart: unless-stopped
+    profiles: ["actions"]
+    networks: [mb-proxy]
+    volumes:
+      - /data/gitea/runner:/data
+      # CI jobs build and run containers, so the runner needs a Docker API.
+      # Hardening: deploy the socket-proxy suite and point
+      # DOCKER_HOST=tcp://socket-proxy:2375 instead of the raw socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - GITEA_INSTANCE_URL=https://${DEV_DOMAIN}
+      - GITEA_RUNNER_REGISTRATION_TOKEN=${GITEA_RUNNER_REGISTRATION_TOKEN}
+      - GITEA_RUNNER_NAME=${GITEA_RUNNER_NAME:-dev-runner}
+    depends_on:
+      gitea:
+        # Optional dependency so `--profile actions` validates standalone;
+        # in production start the suite together (see README runbook).
+        condition: service_healthy
+        required: false
+    deploy:
+      resources:
+        limits:
+          # Runners execute arbitrary CI workloads; cap them hard.
+          memory: 2g
+          cpus: "1.5"
 
   # ── Optional: Private container registry ────────────────────────────────
   registry:

@@ -47,6 +47,20 @@ MB_BACKUP_COMPOSE_FILE="${MB_BACKUP_COMPOSE_FILE:-compose.yml}"
 # _mb_backup_log <message>
 #   Append a timestamped line to the hook log. Best-effort: if the log dir
 #   isn't writable (e.g. non-root on macOS), the message is silently dropped.
+
+# Optional compose profiles to include when enumerating services. Suite files
+# gate optional services behind profiles (e.g. "ci", "registry"); set
+# MB_BACKUP_COMPOSE_PROFILES="ci registry" so discovery and hooks see them.
+MB_BACKUP_COMPOSE_PROFILES="${MB_BACKUP_COMPOSE_PROFILES:-}"
+
+_mb_backup_profile_args() {
+    # One --profile flag per entry; word splitting is intentional.
+    # shellcheck disable=SC2086
+    for _p in $MB_BACKUP_COMPOSE_PROFILES; do
+        printf '%s ' "--profile ${_p}"
+    done
+}
+
 _mb_backup_log() {
     local msg="$*"
     mkdir -p "$MB_BACKUP_LOG_DIR" 2>/dev/null || return 0
@@ -80,7 +94,8 @@ _mb_backup_container_for() {
     project=$(basename "$(cd "$(dirname "$compose_file")" && pwd)")
     # Prefer an explicit container_name from the compose file.
     local cname
-    cname=$(docker compose -f "$compose_file" config --no-interpolate 2>/dev/null \
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+    cname=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --no-interpolate 2>/dev/null \
         | awk -v svc="$service" '
             /^  [a-zA-Z0-9_-]+:[[:space:]]*$/ {
                 gsub(/[[:space:]:]/,"",$0); cur=$0
@@ -110,7 +125,8 @@ _mb_backup_label() {
 _mb_backup_compose_label() {
     local service="$1" label="$2" compose_file="$3"
     [ -f "$compose_file" ] || return 0
-    docker compose -f "$compose_file" config --no-interpolate 2>/dev/null \
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+    docker compose -f "$compose_file" $(_mb_backup_profile_args) config --no-interpolate 2>/dev/null \
         | awk -v svc="$service" -v want="$label" '
             # Top-level service key: 2-space indent, "name:"
             /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ {
@@ -173,7 +189,8 @@ mb_backup_detect_type() {
     fi
     # Fall back to the image declared in compose (works without a running container).
     if [ -z "$image" ] && [ -f "$compose_file" ]; then
-        image=$(docker compose -f "$compose_file" config --no-interpolate 2>/dev/null \
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+        image=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --no-interpolate 2>/dev/null \
             | awk -v svc="$service" '
                 /^  [a-zA-Z0-9_-]+:[[:space:]]*$/ {
                     gsub(/[[:space:]:]/,"",$0); cur=$0
@@ -506,7 +523,8 @@ mb_backup_hook_discover() {
     local found=0
     # List services from the compose file (handles profiles gracefully).
     local services
-    services=$(docker compose -f "$compose_file" config --services 2>/dev/null) || {
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+    services=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --services 2>/dev/null) || {
         mb_warn "could not parse compose file: $compose_file"
         return 1
     }
@@ -516,7 +534,8 @@ mb_backup_hook_discover() {
         engine=$(mb_backup_detect_type "$svc" "$compose_file") || engine="unknown"
         [ "$engine" = "unknown" ] && continue
         container=$(_mb_backup_container_for "$svc" "$compose_file")
-        image=$(docker compose -f "$compose_file" config --no-interpolate 2>/dev/null \
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+        image=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --no-interpolate 2>/dev/null \
             | awk -v s="$svc" '
                 /^  [a-zA-Z0-9_-]+:[[:space:]]*$/ {gsub(/[[:space:]:]/,"",$0); cur=$0}
                 /image:/ && cur==s {sub(/.*image:[[:space:]]*/,""); gsub(/["'"'"']/,""); print; exit}
@@ -550,7 +569,8 @@ mb_backup_hook_discover() {
 mb_backup_hook_pre_all() {
     local compose_file="${1:-$MB_BACKUP_COMPOSE_FILE}"
     local services
-    services=$(docker compose -f "$compose_file" config --services 2>/dev/null) || return 1
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+    services=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --services 2>/dev/null) || return 1
     local rc=0
     for svc in $services; do
         local engine
@@ -566,7 +586,8 @@ mb_backup_hook_pre_all() {
 mb_backup_hook_post_all() {
     local compose_file="${1:-$MB_BACKUP_COMPOSE_FILE}"
     local services
-    services=$(docker compose -f "$compose_file" config --services 2>/dev/null) || return 1
+            # shellcheck disable=SC2046  # intentional: profile flags split into words
+    services=$(docker compose -f "$compose_file" $(_mb_backup_profile_args) config --services 2>/dev/null) || return 1
     local rc=0
     for svc in $services; do
         local engine
