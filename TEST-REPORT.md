@@ -38,3 +38,39 @@ Untested (honest boundaries):
 - L4 host-level lifecycle (upgrade-with-data-preservation, backup/restore of
   suite volumes) not run - blocked on the Round 3 upgrade/restore fixtures
   (iter/compose-upgrade-fixture, iter/backup-restore-fixture).
+
+---
+
+## 2026-09-11T20:23:49Z — commit 8980ccc (Round 2 Day 12: iter/compose-gitops-suite)
+
+**Layers executed: L1, L2, L3 (hook dry-run + compose profile matrix). L4 not run.**
+
+| Check | Result |
+|---|---|
+| L1 bash -n + shellcheck repo-wide (incl. modified backup-hooks lib) | PASS |
+| L2 validate-compose.sh: 10/10 compose units valid | PASS |
+| L3 compose profile matrix: default = 3 core services; --profile ci --profile actions = all 6; standalone --profile actions validates (rc 0) | PASS (3/3 combos) |
+| L3 backup-hook discovery with MB_BACKUP_COMPOSE_PROFILES="ci actions": 2/2 postgres services found; dry-run fires 2/2 pg_dump commands | PASS |
+
+Defects found and fixed in this cycle:
+
+1. **Suite profile model broken since creation** (high): core services with
+   `profiles: ["all", ""]` are excluded under any --profile flag, so every
+   documented optional-profile command failed compose validation. Core
+   services are now always enabled (no profiles key).
+2. **Backup hooks silently skipped optional-profile databases**: discovery
+   enumerated only default-profile services, so databases behind a profile
+   were never dumped. MB_BACKUP_COMPOSE_PROFILES now passes profile flags
+   through discovery and hooks.
+3. Registration-token and socket-mount design for the runner simplified to
+   match act_runner's actual registration flow (config-file mount removed).
+
+Untested (honest boundaries):
+
+- The runner was not started against a live Gitea instance (registration
+  requires a running Gitea and admin token); registration and job execution
+  are runbook-documented only.
+- Real pg_dump execution (non-dry-run) requires a running postgres container
+  with seed data - covered later with backup-kit's restore fixture work.
+- L4 host-level: end-to-end CI job execution and backup-restore of the
+  suite's volumes - blocked on a disposable environment.
