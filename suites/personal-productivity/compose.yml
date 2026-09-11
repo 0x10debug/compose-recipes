@@ -13,6 +13,8 @@ services:
     image: vaultwarden/server:1.32.0
     container_name: vaultwarden
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -36,6 +38,8 @@ services:
     image: neosmemo/memos:0.22.4
     container_name: memos
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -55,6 +59,8 @@ services:
     image: outlinewiki/outline:0.80.2
     container_name: outline
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -89,6 +95,8 @@ services:
     image: postgres:16-alpine
     container_name: outline-postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     volumes:
@@ -107,6 +115,8 @@ services:
     image: redis:7-alpine
     container_name: outline-redis
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     volumes:
@@ -121,6 +131,8 @@ services:
     image: linkwarden/linkwarden:2.9.0
     container_name: linkwarden
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -146,6 +158,8 @@ services:
     image: postgres:16-alpine
     container_name: linkwarden-postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     volumes:
@@ -165,6 +179,8 @@ services:
     image: frooodle/s-pdf:0.35.1
     container_name: stirling-pdf
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["pdf"]
     networks: [mb-proxy]
     ports:

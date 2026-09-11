@@ -20,6 +20,8 @@ services:
     image: tecnativa/docker-socket-proxy:0.1.5
     container_name: socket-proxy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", "", "demo"]
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -60,6 +62,9 @@ services:
   docker-api-demo:
     image: curlimages/curl:8.11.1
     container_name: docker-api-demo
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
     profiles: ["demo"]
     networks:
       - mb-socket-proxy

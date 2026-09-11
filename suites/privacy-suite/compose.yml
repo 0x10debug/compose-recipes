@@ -14,6 +14,8 @@ services:
     image: adguard/adguardhome:0.107.52
     container_name: adguardhome
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -36,6 +38,8 @@ services:
     image: searxng/searxng:2026.8.5-1689cb1b5
     container_name: searxng
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -59,6 +63,8 @@ services:
     image: redis:7-alpine
     container_name: searxng-redis
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     volumes:
@@ -73,6 +79,8 @@ services:
     image: vaultwarden/server:1.32.0
     container_name: vaultwarden
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks: [mb-proxy]
     ports:
@@ -95,6 +103,8 @@ services:
     image: ghcr.io/wg-easy/wg-easy:14.0.0
     container_name: wireguard-easy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["vpn"]
     networks: [mb-proxy]
     ports:

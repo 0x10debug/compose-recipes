@@ -61,6 +61,8 @@ services:
     image: nextcloud:29.0.6
     container_name: nextcloud
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     depends_on:
       nextcloud-postgres:
@@ -96,6 +98,8 @@ services:
     image: postgres:16-alpine
     container_name: nextcloud-postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks:
       - mb-proxy
@@ -115,6 +119,8 @@ services:
     image: redis:7-alpine
     container_name: nextcloud-redis
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks:
       - mb-proxy
@@ -130,6 +136,8 @@ services:
     image: onlyoffice/documentserver:8.2.2
     container_name: onlyoffice
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks:
       - mb-proxy
@@ -151,6 +159,8 @@ services:
     image: filebrowser/filebrowser:2.31.2
     container_name: filebrowser
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["all", ""]
     networks:
       - mb-proxy
@@ -174,6 +184,8 @@ services:
     image: tomsquest/docker-radicale:3.3.1.0
     container_name: radicale
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["pim"]
     networks:
       - mb-proxy

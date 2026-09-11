@@ -34,6 +34,16 @@ jobs:
           shellcheck -S warning mb
           echo "shellcheck gate: no error or warning level findings"
 
+  hardening-lint:
+    name: container hardening baseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Enforce no-new-privileges baseline (docs/hardening-matrix.md)
+        run: ./scripts/hardening-lint.sh
+
   compose-config:
     name: compose file validation
     runs-on: ubuntu-latest

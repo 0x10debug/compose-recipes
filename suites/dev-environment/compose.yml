@@ -15,6 +15,8 @@ services:
     image: gitea/gitea:1.22.3
     container_name: gitea
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks: [mb-proxy]
     ports:
       - "${GITEA_WEB_PORT:-3000}:3000"
@@ -50,6 +52,8 @@ services:
     image: postgres:16-alpine
     container_name: gitea-postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks: [mb-proxy]
     volumes:
       - /data/gitea/postgres:/var/lib/postgresql/data
@@ -71,6 +75,8 @@ services:
     image: lscr.io/linuxserver/code-server:4.127.0
     container_name: code-server
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     networks: [mb-proxy]
     ports:
       - "${CODE_SERVER_PORT:-8443}:8443"
@@ -94,6 +100,8 @@ services:
     image: woodpeckerci/woodpecker-server:2.7.0
     container_name: woodpecker
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["ci"]
     networks: [mb-proxy]
     ports:
@@ -125,6 +133,8 @@ services:
     image: postgres:16-alpine
     container_name: woodpecker-postgres
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["ci"]
     networks: [mb-proxy]
     volumes:
@@ -150,6 +160,8 @@ services:
     image: gitea/act_runner:0.2.11
     container_name: gitea-runner
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["actions"]
     networks: [mb-proxy]
     volumes:
@@ -180,6 +192,8 @@ services:
     image: registry:2
     container_name: registry
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     profiles: ["registry"]
     networks: [mb-proxy]
     ports:
