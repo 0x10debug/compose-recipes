@@ -74,3 +74,31 @@ Untested (honest boundaries):
   with seed data - covered later with backup-kit's restore fixture work.
 - L4 host-level: end-to-end CI job execution and backup-restore of the
   suite's volumes - blocked on a disposable environment.
+
+---
+
+## 2026-09-11T20:28:34Z — commit 380b589 (Round 2 Day 12: iter/compose-hardening-pass)
+
+**Layers executed: L1, L2, L3 (lint + intentional-red). L4 not run.**
+
+| Check | Result |
+|---|---|
+| L1 bash -n + shellcheck repo-wide (incl. new hardening-lint.sh) | PASS |
+| L2 validate-compose.sh 10/10 after 42+1 security_opt insertions | PASS |
+| L3 hardening-lint.sh: 43/43 services covered, 0 violations; intentional-red (strip one service) produces a named VIOLATION and rc 1; restored and green | PASS |
+
+Scope decision (recorded in docs/hardening-matrix.md): no-new-privileges is
+universal and applied now; read_only, cap_drop, and dedicated-user controls
+are NOT blanket-applied because each app needs a smoke boot to enumerate
+write paths and capabilities - documented as per-app follow-ups in the
+matrix rather than silently skipped.
+
+Untested (honest boundaries):
+
+- No suite was booted with the new security_opt this cycle; the control is
+  validated as config (no-new-privileges has no filesystem impact, so boot
+  risk is low, but L3 boot evidence is not claimed).
+- read_only/cap_drop rollout: blocked on per-app smoke boots (listed in the
+  matrix).
+- L4 host-level: full lifecycle with hardened services - blocked on a
+  disposable environment.
